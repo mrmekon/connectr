@@ -1,0 +1,13 @@
+[package]
+
+name = "connectr"
+version = "0.0.1"
+authors = [ "Trevor Bentley <trevor@trevorbentley.com>" ]
+
+[dependencies]
+curl = "0.4.6"
+open = "1.2.0"
+regex = "0.2"
+rustc-serialize = "0.3.23"
+url = "1.4.0"
+rust-ini = "0.9"
