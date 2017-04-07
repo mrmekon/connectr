@@ -3,6 +3,7 @@ mod spotify_api {
     pub const AUTHORIZE: &'static str = "https://accounts.spotify.com/en/authorize";
     pub const TOKEN: &'static str = "https://accounts.spotify.com/api/token";
     pub const DEVICES: &'static str = "https://api.spotify.com/v1/me/player/devices";
+    pub const PLAYER_STATE: &'static str = "https://api.spotify.com/v1/me/player";
 }
 
 #[derive(PartialEq)]
@@ -17,6 +18,7 @@ extern crate regex;
 extern crate rustc_serialize;
 extern crate url;
 extern crate ini;
+extern crate systray;
 
 use std::net::{TcpListener};
 use std::io::{Read, Write, BufReader, BufRead};
@@ -172,10 +174,34 @@ struct ConnectDeviceList {
     devices: Vec<ConnectDevice>
 }
 
+#[derive(RustcDecodable, RustcEncodable, Debug)]
+struct PlayerState {
+    timestamp: u64,
+    device: ConnectDevice,
+    progress_ms: u32,
+}
+
 struct Settings {
     port: u32,
     secret: String,
     client_id: String,
+}
+
+#[cfg(target_os = "windows")]
+fn systray(player_state: PlayerState) {
+    let mut app;
+    match systray::Application::new() {
+        Ok(w) => app = w,
+        Err(e) => panic!("Can't create systray window.")
+    }
+    let mut w = &mut app.window;
+    let _ = w.set_icon_from_file(&"spotify.ico".to_string());
+    let _ = w.set_tooltip(&"Whatever".to_string());
+    let _ = w.add_menu_item(&"Print a thing".to_string(), |window| {
+        println!("Printing a thing!");
+    });
+    println!("Waiting on message!");
+    w.wait_for_message();
 }
 
 fn read_settings() -> Option<Settings> {
@@ -215,12 +241,18 @@ fn main() {
     let (access_token, refresh_token) = parse_spotify_token(&json_response);
 
     let json_response = http(spotify_api::DEVICES, "", HttpMethod::GET, Some(&access_token));
+    let device_list: ConnectDeviceList = json::decode(&json_response).unwrap();
 
-    let decoded: ConnectDeviceList = json::decode(&json_response).unwrap();
+    let json_response = http(spotify_api::PLAYER_STATE, "", HttpMethod::GET, Some(&access_token));
+    let player_state: PlayerState = json::decode(&json_response).unwrap();
 
     println!("Auth Code: {}...", &auth_code[0..5]);
     println!("Access: {}... / Refresh: {}...", &access_token[0..5], &refresh_token[0..5]);
-    for dev in decoded.devices {
+    for dev in device_list.devices {
         println!("{:?}", dev);
     }
+    println!("State: {:?}", player_state);
+
+    systray(player_state);
+    loop {}
 }
