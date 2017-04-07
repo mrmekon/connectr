@@ -21,6 +21,7 @@ extern crate ini;
 use std::net::{TcpListener};
 use std::io::{Read, Write, BufReader, BufRead};
 
+use std::process;
 use curl::easy::{Easy, List};
 use regex::Regex;
 use rustc_serialize::json::Json;
@@ -74,7 +75,11 @@ fn authenticate(settings: &Settings) -> String {
     let url = format!("{}?client_id={}&response_type=code&scope={}&redirect_uri={}",
                       spotify_api::AUTHORIZE,settings.client_id, scopes, host);
     let query = percent_encoding::utf8_percent_encode(&url, percent_encoding::QUERY_ENCODE_SET).collect::<String>();
-    let response = "HTTP/1.1 200 OK\r\n\r\nAuthenticated with Spotify.\r\n\r\nYou can close this window.\r\n";
+    let response = "HTTP/1.1 200 OK\r\n\r\n<html><body>
+Authenticated with Spotify.<br/><br/>
+You can close this window.<br/><br/>
+<button type=\"button\" onclick=\"window.open('', '_self', ''); window.close();\">Close</button><br/>
+</body></html>";
     let auth_lines = oauth_request_with_local_webserver(settings.port, &query, response);
     let auth_code = spotify_auth_code(auth_lines);
     auth_code
@@ -173,7 +178,7 @@ struct Settings {
     client_id: String,
 }
 
-fn read_settings() -> Settings {
+fn read_settings() -> Option<Settings> {
     let conf = Ini::load_from_file("connectr.ini").unwrap();
 
     let section = conf.section(Some("connectr".to_owned())).unwrap();
@@ -182,11 +187,26 @@ fn read_settings() -> Settings {
     let section = conf.section(Some("application".to_owned())).unwrap();
     let secret = section.get("secret").unwrap();
     let client_id = section.get("client_id").unwrap();
-    Settings { secret: secret.to_string(), client_id: client_id.to_string(), port: port }
+    if client_id.starts_with('<') || secret.starts_with('<') {
+        println!("");
+        println!("ERROR: Spotify Client ID or Secret not set in connectr.ini!");
+        println!("");
+        println!("Create a Spotify application at https://developer.spotify.com/my-applications/ and");
+        println!("add the client ID and secret to connectr.ini.");
+        println!("");
+        println!("Be sure to add a redirect URI of http://127.0.0.1:<PORT> to your Spotify application,");
+        println!("and make sure the port matches in connectr.ini.");
+        println!("");
+        return None;
+    }
+    Some(Settings { secret: secret.to_string(), client_id: client_id.to_string(), port: port })
 }
 
 fn main() {
-    let settings = read_settings();
+    let settings = match read_settings() {
+        Some(s) => s,
+        None => process::exit(0),
+    };
     let auth_code = authenticate(&settings);
     let query = format!("grant_type=authorization_code&code={}&redirect_uri=http://127.0.0.1:{}&client_id={}&client_secret={}",
                         auth_code, settings.port, settings.client_id, settings.secret);
