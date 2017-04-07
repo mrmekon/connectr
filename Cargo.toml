@@ -3,6 +3,7 @@
 name = "connectr"
 version = "0.0.1"
 authors = [ "Trevor Bentley <trevor@trevorbentley.com>" ]
+build = "build.rs"
 
 [dependencies]
 curl = "0.4.6"
