@@ -30,7 +30,16 @@ fn main() {
     };
     let mut spotify = connectr::SpotifyConnectr::new(settings);
     spotify.connect();
-    spotify.go();
+
+    let device_list = spotify.request_device_list();
+    let player_state = spotify.request_player_state();
+
+    for dev in device_list.devices {
+        println!("{:?}", dev);
+    }
+    println!("State: {:?}", player_state);
+
+    spotify.play_uri("spotify:user:mrmekon:playlist:4XqYlbPdDUsranzjicPCgf");
 
     //systray(player_state);
     //loop {}

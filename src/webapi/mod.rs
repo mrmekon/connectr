@@ -84,22 +84,16 @@ impl SpotifyConnectr {
         self.access_token = access_token;
         self.refresh_token = refresh_token;
     }
-    pub fn request_device_list() {}
-    pub fn go(&self) {
+    pub fn request_device_list(&self) -> ConnectDeviceList {
         let json_response = http::http(spotify_api::DEVICES, "", http::HttpMethod::GET, Some(&self.access_token)).unwrap();
-        let device_list: ConnectDeviceList = json::decode(&json_response).unwrap();
-
+        json::decode(&json_response).unwrap()
+    }
+    pub fn request_player_state(&self) -> PlayerState {
         let json_response = http::http(spotify_api::PLAYER_STATE, "", http::HttpMethod::GET, Some(&self.access_token)).unwrap();
-        let player_state: PlayerState = json::decode(&json_response).unwrap();
-
-        println!("Auth Code: {}...", &self.auth_code[0..5]);
-        println!("Access: {}... / Refresh: {}...", &self.access_token[0..5], &self.refresh_token[0..5]);
-        for dev in device_list.devices {
-            println!("{:?}", dev);
-        }
-        println!("State: {:?}", player_state);
-
-        let query = format!("{{\"context_uri\": \"spotify:user:mrmekon:playlist:4XqYlbPdDUsranzjicPCgf\"}}");
+        json::decode(&json_response).unwrap()
+    }
+    pub fn play_uri(&self, uri: &str) {
+        let query = format!("{{\"context_uri\": \"{}\"}}", uri);
         let _ = http::http(spotify_api::PLAY, &query, http::HttpMethod::PUT, Some(&self.access_token));
     }
 }
