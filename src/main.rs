@@ -4,14 +4,17 @@ mod spotify_api {
     pub const TOKEN: &'static str = "https://accounts.spotify.com/api/token";
     pub const DEVICES: &'static str = "https://api.spotify.com/v1/me/player/devices";
     pub const PLAYER_STATE: &'static str = "https://api.spotify.com/v1/me/player";
+    pub const PLAY: &'static str = "https://api.spotify.com/v1/me/player/play";
 }
 
 #[derive(PartialEq)]
 enum HttpMethod {
     GET,
     POST,
+    PUT,
 }
 
+extern crate connectr;
 extern crate curl;
 extern crate open;
 extern crate regex;
@@ -24,6 +27,9 @@ use std::net::{TcpListener};
 use std::io::{Read, Write, BufReader, BufRead};
 
 use std::process;
+use std::str;
+use std::fmt;
+use std::error::Error;
 use curl::easy::{Easy, List};
 use regex::Regex;
 use rustc_serialize::json::Json;
@@ -32,6 +38,7 @@ use rustc_serialize::Decodable;
 use rustc_serialize::Decoder;
 use url::percent_encoding;
 use ini::Ini;
+use connectr::http;
 
 fn oauth_request_with_local_webserver(port: u32, url: &str, reply: &str) -> Vec<String> {
     if !open::that(url).is_ok() {
@@ -87,20 +94,62 @@ You can close this window.<br/><br/>
     auth_code
 }
 
-fn http(url: &str, query: &str, method: HttpMethod, access_token: Option<&str>) -> String {
+type HttpErrorString = String;
+struct HttpResponse {
+    code: Option<u32>,
+    data: Result<String, HttpErrorString>,
+}
+
+impl HttpResponse {
+    fn unwrap(self) -> String { self.data.unwrap() }
+    fn print(&self) {
+        let code: i32 = match self.code {
+            Some(x) => { x as i32 }
+            None => -1
+        };
+        println!("Code: {}", code);
+        match self.data {
+            Ok(ref s) => {println!("{}", s)}
+            Err(ref s) => {println!("ERROR: {}", s)}
+        }
+    }
+}
+
+impl std::fmt::Display for HttpResponse {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let code: i32 = match self.code {
+            Some(x) => { x as i32 }
+            None => -1
+        };
+        write!(f, "Code: {}\n", code);
+        match self.data {
+            Ok(ref s) => {write!(f, "{}\n", s)}
+            Err(ref s) => {write!(f, "ERROR: {}\n", s)}
+        }        
+    }
+}
+
+fn http(url: &str, query: &str, method: HttpMethod, access_token: Option<&str>) -> HttpResponse {
     let mut data = query.as_bytes();
+    //let mut response = 0;
+    let mut response = None;
     let mut json_bytes = Vec::<u8>::new();
     {
         let mut easy = Easy::new();
         match method {
+            HttpMethod::GET => {
+                let get_url = format!("{}?{}", url, query);
+                easy.url(&get_url).unwrap();
+            }
             HttpMethod::POST => {
                 easy.url(url).unwrap();
                 easy.post(true).unwrap();
                 easy.post_field_size(data.len() as u64).unwrap();
             }
-            _ => {
-                let get_url = format!("{}?{}", url, query);
-                easy.url(&get_url).unwrap();
+            HttpMethod::PUT => {
+                easy.url(url).unwrap();
+                easy.put(true).unwrap();
+                easy.post_field_size(data.len() as u64).unwrap();
             }
         }
 
@@ -116,7 +165,7 @@ fn http(url: &str, query: &str, method: HttpMethod, access_token: Option<&str>) 
 
         {
             let mut transfer = easy.transfer();
-            if method == HttpMethod::POST {
+            if method == HttpMethod::POST || method == HttpMethod::PUT {
                 transfer.read_function(|buf| {
                     Ok(data.read(buf).unwrap_or(0))
                 }).unwrap();
@@ -125,10 +174,24 @@ fn http(url: &str, query: &str, method: HttpMethod, access_token: Option<&str>) 
                 json_bytes.extend(x);
                 Ok(x.len())
             }).unwrap();
-            transfer.perform().unwrap();
+            match transfer.perform() {
+                Err(x) => {
+                    let result: Result<String,String> = Err(x.description().to_string());
+                    return HttpResponse {code: response, data: result }
+                }
+                _ => {}
+            };
         }
+        response = match easy.response_code() {
+            Ok(code) => { Some(code) }
+            _ => { None }
+        };
     }
-    String::from_utf8(json_bytes).unwrap()
+    let result: Result<String,String> = match String::from_utf8(json_bytes) {
+        Ok(x) => { Ok(x) }
+        Err(x) => { Err(x.utf8_error().description().to_string()) }
+    };
+    HttpResponse {code: response, data: result }
 }
 
 fn parse_spotify_token(json: &str) -> (String, String) {
@@ -179,6 +242,9 @@ struct PlayerState {
     timestamp: u64,
     device: ConnectDevice,
     progress_ms: u32,
+    is_playing: bool,
+    shuffle_state: bool,
+    repeat_state: String,
 }
 
 struct Settings {
@@ -237,13 +303,13 @@ fn main() {
     let query = format!("grant_type=authorization_code&code={}&redirect_uri=http://127.0.0.1:{}&client_id={}&client_secret={}",
                         auth_code, settings.port, settings.client_id, settings.secret);
     let query = percent_encoding::utf8_percent_encode(&query, percent_encoding::QUERY_ENCODE_SET).collect::<String>();
-    let json_response = http(spotify_api::TOKEN, &query, HttpMethod::POST, None);
+    let json_response = http(spotify_api::TOKEN, &query, HttpMethod::POST, None).unwrap();
     let (access_token, refresh_token) = parse_spotify_token(&json_response);
 
-    let json_response = http(spotify_api::DEVICES, "", HttpMethod::GET, Some(&access_token));
+    let json_response = http(spotify_api::DEVICES, "", HttpMethod::GET, Some(&access_token)).unwrap();
     let device_list: ConnectDeviceList = json::decode(&json_response).unwrap();
 
-    let json_response = http(spotify_api::PLAYER_STATE, "", HttpMethod::GET, Some(&access_token));
+    let json_response = http(spotify_api::PLAYER_STATE, "", HttpMethod::GET, Some(&access_token)).unwrap();
     let player_state: PlayerState = json::decode(&json_response).unwrap();
 
     println!("Auth Code: {}...", &auth_code[0..5]);
@@ -253,6 +319,9 @@ fn main() {
     }
     println!("State: {:?}", player_state);
 
-    systray(player_state);
-    loop {}
+    let query = format!("{{\"context_uri\": \"spotify:user:mrmekon:playlist:4XqYlbPdDUsranzjicPCgf\"}}");
+    let json_response = http(spotify_api::PLAY, &query, HttpMethod::PUT, Some(&access_token));
+
+    //systray(player_state);
+    //loop {}
 }
