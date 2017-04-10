@@ -1,6 +1,7 @@
 extern crate rustc_serialize;
 use self::rustc_serialize::{Decodable, Decoder, json};
 use self::rustc_serialize::json::Json;
+use self::rustc_serialize::json::ToJson;
 
 use super::http;
 use super::settings;
@@ -53,7 +54,7 @@ pub struct ConnectDeviceList {
 pub struct PlayerState {
     pub timestamp: u64,
     pub device: ConnectDevice,
-    pub progress_ms: u32,
+    pub progress_ms: Option<u32>,
     pub is_playing: bool,
     pub shuffle_state: bool,
     pub repeat_state: String,
@@ -72,6 +73,28 @@ pub struct SpotifyConnectr {
     access_token: String,
     refresh_token: String,
 }
+
+pub type DeviceId = String;
+
+#[derive(RustcDecodable, RustcEncodable)]
+pub struct PlayContextOffset {
+    pub position: Option<u32>,
+    pub uri: Option<String>,
+}
+impl Default for PlayContextOffset {
+    fn default() -> PlayContextOffset { PlayContextOffset { position: None, uri: None } }
+}
+
+#[derive(RustcDecodable, RustcEncodable)]
+pub struct PlayContext {
+    pub context_uri: Option<String>,
+    pub uris: Option<Vec<String>>,
+    pub offset: Option<PlayContextOffset>,
+}
+impl Default for PlayContext {
+    fn default() -> PlayContext { PlayContext { context_uri: None, uris: None, offset: None } }
+}
+
 
 impl SpotifyConnectr {
     pub fn new(settings: settings::Settings) -> SpotifyConnectr {
@@ -92,8 +115,23 @@ impl SpotifyConnectr {
         let json_response = http::http(spotify_api::PLAYER_STATE, "", http::HttpMethod::GET, Some(&self.access_token)).unwrap();
         json::decode(&json_response).unwrap()
     }
-    pub fn play_uri(&self, uri: &str) {
-        let query = format!("{{\"context_uri\": \"{}\"}}", uri);
+    pub fn play(&self, device: Option<DeviceId>, context: Option<&PlayContext>) {
+        let query = match context {
+            Some(x) => {
+                //json::encode(x).unwrap()
+                let jstr = json::encode(x).unwrap();
+                let jdata = Json::from_str(&jstr).unwrap();
+                let jobj = jdata.into_object().unwrap();
+                jobj.insert("device".to_string(), device.unwrap().to_json());
+                String::new()
+            },
+            None => String::new(),
+        };
+        println!("PUT query: {}", query);
         let _ = http::http(spotify_api::PLAY, &query, http::HttpMethod::PUT, Some(&self.access_token));
+    }
+    pub fn pause(&self, device: Option<DeviceId>) {
+        let query = String::new();
+        let _ = http::http(spotify_api::PAUSE, &query, http::HttpMethod::PUT, Some(&self.access_token));
     }
 }

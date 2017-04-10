@@ -39,7 +39,17 @@ fn main() {
     }
     println!("State: {:?}", player_state);
 
-    spotify.play_uri("spotify:user:mrmekon:playlist:4XqYlbPdDUsranzjicPCgf");
+    let offset = connectr::PlayContextOffset {
+        position: Some(5), uri: Some("blah".to_string()),
+    };
+    let ctx = connectr::PlayContext {
+        context_uri: Some("spotify:user:mrmekon:playlist:4XqYlbPdDUsranzjicPCgf".to_string()),
+        uris: Some(vec!["one".to_string(), "two".to_string()]),
+        offset: Some(offset),
+    };
+    spotify.play(None, Some(&ctx));
+    spotify.pause(None);
+    spotify.play(None, None);
 
     //systray(player_state);
     //loop {}
