@@ -13,4 +13,5 @@ pub mod spotify_api {
     pub const DEVICES: &'static str = "https://api.spotify.com/v1/me/player/devices";
     pub const PLAYER_STATE: &'static str = "https://api.spotify.com/v1/me/player";
     pub const PLAY: &'static str = "https://api.spotify.com/v1/me/player/play";
+    pub const PAUSE: &'static str = "https://api.spotify.com/v1/me/player/pause";
 }
