@@ -199,6 +199,27 @@ impl QueryString {
 
 pub type SpotifyResponse = HttpResponse;
 
+pub enum SpotifyRepeat {
+    Off,
+    Track,
+    Context,
+}
+impl ToString for SpotifyRepeat {
+    fn to_string(&self) -> String {
+        match self {
+            &SpotifyRepeat::Off => "off".to_string(),
+            &SpotifyRepeat::Track => "track".to_string(),
+            &SpotifyRepeat::Context => "context".to_string(),
+        }
+    }
+}
+
+#[derive(RustcDecodable, RustcEncodable)]
+struct DeviceIdList {
+    device_ids: Vec<String>,
+    play: bool,
+}
+
 pub struct SpotifyConnectr {
     settings: settings::Settings,
     auth_code: String,
@@ -244,11 +265,48 @@ impl SpotifyConnectr {
         let query = QueryString::new().add_opt("device_id", self.device.clone()).build();
         http::http(spotify_api::PAUSE, &query, "", http::HttpMethod::PUT, Some(&self.access_token))
     }
+    pub fn next(&self) -> SpotifyResponse {
+        let query = QueryString::new().add_opt("device_id", self.device.clone()).build();
+        http::http(spotify_api::NEXT, &query, "", http::HttpMethod::POST, Some(&self.access_token))
+    }
+    pub fn previous(&self) -> SpotifyResponse {
+        let query = QueryString::new().add_opt("device_id", self.device.clone()).build();
+        http::http(spotify_api::PREVIOUS, &query, "", http::HttpMethod::POST, Some(&self.access_token))
+    }
     pub fn seek(&self, position: u32) -> SpotifyResponse {
         let query = QueryString::new()
             .add_opt("device_id", self.device.clone())
             .add("position_ms", position)
             .build();
         http::http(spotify_api::SEEK, &query, "", http::HttpMethod::PUT, Some(&self.access_token))
+    }
+    pub fn volume(&self, volume: u32) -> SpotifyResponse {
+        let query = QueryString::new()
+            .add_opt("device_id", self.device.clone())
+            .add("volume_percent", volume)
+            .build();
+        http::http(spotify_api::VOLUME, &query, "", http::HttpMethod::PUT, Some(&self.access_token))
+    }
+    pub fn shuffle(&self, shuffle: bool) -> SpotifyResponse {
+        let query = QueryString::new()
+            .add_opt("device_id", self.device.clone())
+            .add("state", shuffle)
+            .build();
+        http::http(spotify_api::SHUFFLE, &query, "", http::HttpMethod::PUT, Some(&self.access_token))
+    }
+    pub fn repeat(&self, repeat: SpotifyRepeat) -> SpotifyResponse {
+        let query = QueryString::new()
+            .add_opt("device_id", self.device.clone())
+            .add("state", repeat)
+            .build();
+        http::http(spotify_api::REPEAT, &query, "", http::HttpMethod::PUT, Some(&self.access_token))
+    }
+    pub fn transfer_multi(&self, devices: Vec<String>, play: bool) -> SpotifyResponse {
+        let body = json::encode(&DeviceIdList {device_ids: devices, play: play}).unwrap();
+        http::http(spotify_api::PLAYER, "", &body, http::HttpMethod::PUT, Some(&self.access_token))
+    }
+    pub fn transfer(&self, device: String, play: bool) -> SpotifyResponse {
+        let body = json::encode(&DeviceIdList {device_ids: vec![device], play: play}).unwrap();
+        http::http(spotify_api::PLAYER, "", &body, http::HttpMethod::PUT, Some(&self.access_token))
     }
 }

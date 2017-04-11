@@ -53,5 +53,15 @@ fn main() {
     spotify.set_target_device(None);
     require(spotify.play(Some(&ctx)));
     require(spotify.pause());
+    require(spotify.next());
+    require(spotify.previous());
     require(spotify.seek(5000));
+    require(spotify.volume(10));
+    require(spotify.shuffle(true));
+    require(spotify.repeat(connectr::SpotifyRepeat::Context));
+    require(spotify.transfer_multi(vec!["1a793f2a23989a1c35d05b2fd1ff00e9a67e7134".to_string()], false));
+    require(spotify.transfer("1a793f2a23989a1c35d05b2fd1ff00e9a67e7134".to_string(), false));
+
+    let player_state = spotify.request_player_state();
+    println!("Final state:\n{}", player_state);
 }
