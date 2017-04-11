@@ -1,9 +1,20 @@
 [package]
-
 name = "connectr"
 version = "0.0.1"
 authors = [ "Trevor Bentley <trevor@trevorbentley.com>" ]
 build = "build.rs"
+
+[lib]
+crate-type = ["rlib", "dylib"]
+
+[profile.release]
+opt-level = 3
+debug = false
+rpath = false
+lto = true
+debug-assertions = false
+codegen-units = 1
+panic = 'unwind'
 
 [dependencies]
 curl = "0.4.6"
@@ -12,3 +23,7 @@ regex = "0.2"
 rustc-serialize = "0.3.23"
 url = "1.4.0"
 rust-ini = "0.9"
+
+[target."cfg(windows)".dependencies]
+[target."cfg(all(unix, not(target_os = \"macos\")))".dependencies]
+[target."cfg(macos)".dependencies]
