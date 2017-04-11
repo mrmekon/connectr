@@ -1,4 +1,3 @@
-
 extern crate connectr;
 use connectr::settings;
 use connectr::SpotifyResponse;

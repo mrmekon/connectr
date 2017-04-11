@@ -26,7 +26,7 @@ pub struct ConnectDevice {
     pub is_restricted: bool,
     pub name: String,
     pub device_type: String,
-    pub volume_percent: u32
+    pub volume_percent: Option<u32>
 }
 
 impl Decodable for ConnectDevice {
@@ -37,7 +37,12 @@ impl Decodable for ConnectDevice {
             let is_restricted = try!(d.read_struct_field("is_restricted", 2, |d| { d.read_bool() }));
             let name = try!(d.read_struct_field("name", 3, |d| { d.read_str() }));
             let device_type = try!(d.read_struct_field("type", 4, |d| { d.read_str() }));
-            let volume_percent = try!(d.read_struct_field("volume_percent", 5, |d| { d.read_u32() }));
+            let volume_percent = try!(d.read_struct_field("volume_percent", 5, |d| {
+                match d.read_u32() {
+                    Ok(x) => Ok(Some(x)),
+                    // 'null' triggers a decode error.  Convert error to valid None:
+                    Err(_) => Ok(None),
+                }}));
             Ok(ConnectDevice{ id: id,
                               is_active: is_active,
                               is_restricted: is_restricted,
