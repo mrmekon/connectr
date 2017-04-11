@@ -84,13 +84,6 @@ pub fn request_oauth_tokens(auth_code: &str, settings: &settings::Settings) -> (
     parse_spotify_token(&json_response)
 }
 
-pub struct SpotifyConnectr {
-    settings: settings::Settings,
-    auth_code: String,
-    access_token: String,
-    refresh_token: String,
-}
-
 pub type DeviceId = String;
 
 #[derive(RustcDecodable, RustcEncodable)]
@@ -167,19 +160,28 @@ impl PlayContext {
     }
 }
 
-fn device_id_query(device: Option<DeviceId>) -> String {
+fn device_id_query(device: &Option<DeviceId>) -> String {
     match device {
-        Some(x) => format!("device_id={}", x),
-        None => "".to_string()
+        &Some(ref x) => format!("device_id={}", x),
+        &None => "".to_string()
     }
 }
 
 pub type SpotifyResponse = HttpResponse;
 
+pub struct SpotifyConnectr {
+    settings: settings::Settings,
+    auth_code: String,
+    access_token: String,
+    refresh_token: String,
+    device: Option<DeviceId>,
+}
+
 impl SpotifyConnectr {
     pub fn new(settings: settings::Settings) -> SpotifyConnectr {
         SpotifyConnectr {settings: settings, auth_code: String::new(),
-                         access_token: String::new(), refresh_token: String::new()}
+                         access_token: String::new(), refresh_token: String::new(),
+                         device: None}
     }
     pub fn connect(&mut self) {
         self.auth_code = http::authenticate(&self.settings);
@@ -195,16 +197,19 @@ impl SpotifyConnectr {
         let json_response = http::http(spotify_api::PLAYER_STATE, "", "", http::HttpMethod::GET, Some(&self.access_token)).unwrap();
         json::decode(&json_response).unwrap()
     }
-    pub fn play(&self, device: Option<DeviceId>, context: Option<&PlayContext>) -> SpotifyResponse {
-        let query = device_id_query(device);
+    pub fn set_target_device(&mut self, device: Option<DeviceId>) {
+        self.device = device;
+    }
+    pub fn play(&self, context: Option<&PlayContext>) -> SpotifyResponse {
+        let query = device_id_query(&self.device);
         let body = match context {
             Some(x) => json::encode(x).unwrap(),
             None => String::new(),
         };
         http::http(spotify_api::PLAY, &query, &body, http::HttpMethod::PUT, Some(&self.access_token))
     }
-    pub fn pause(&self, device: Option<DeviceId>) -> SpotifyResponse {
-        let query = device_id_query(device);
+    pub fn pause(&self) -> SpotifyResponse {
+        let query = device_id_query(&self.device);
         http::http(spotify_api::PAUSE, &query, "", http::HttpMethod::PUT, Some(&self.access_token))
     }
 }
