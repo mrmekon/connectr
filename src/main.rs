@@ -45,17 +45,12 @@ fn main() {
     println!("Devices:\n{}", device_list);
     println!("State:\n{}", player_state);
 
-    let ctx = connectr::PlayContext {
-        context_uri: Some("spotify:user:mrmekon:playlist:4XqYlbPdDUsranzjicPCgf".to_string()),
-        offset: Some(connectr::PlayContextOffset{position: Some(2),..Default::default()}),
-        ..Default::default()
-    };
-    require(spotify.play(None, Some(&ctx)));
-    require(spotify.pause(None));
+    let ctx = connectr::PlayContext::new()
+        .context_uri("spotify:user:mrmekon:playlist:4XqYlbPdDUsranzjicPCgf")
+        .offset_position(2)
+        .build();
+
     require(spotify.play(None, Some(&ctx)));
     require(spotify.pause(None));
     require(spotify.play(None, None));
-
-    //systray(player_state);
-    //loop {}
 }
