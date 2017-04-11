@@ -1,3 +1,5 @@
+use std::fmt;
+
 extern crate rustc_serialize;
 use self::rustc_serialize::{Decodable, Decoder, json};
 use self::rustc_serialize::json::Json;
@@ -6,6 +8,7 @@ use self::rustc_serialize::json::ToJson;
 use super::http;
 use super::settings;
 use super::spotify_api;
+use super::http::HttpResponse;
 
 pub fn parse_spotify_token(json: &str) -> (String, String) {
     let json_data = Json::from_str(&json).unwrap();
@@ -50,6 +53,15 @@ pub struct ConnectDeviceList {
     pub devices: Vec<ConnectDevice>
 }
 
+impl fmt::Display for ConnectDeviceList {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        for dev in &self.devices {
+            let _ = write!(f, "{:?}\n", dev);
+        }
+        Ok(())
+    }
+}
+
 #[derive(RustcDecodable, RustcEncodable, Debug)]
 pub struct PlayerState {
     pub timestamp: u64,
@@ -58,6 +70,12 @@ pub struct PlayerState {
     pub is_playing: bool,
     pub shuffle_state: bool,
     pub repeat_state: String,
+}
+
+impl fmt::Display for PlayerState {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:?}\n", self)
+    }
 }
 
 pub fn request_oauth_tokens(auth_code: &str, settings: &settings::Settings) -> (String, String) {
@@ -118,6 +136,8 @@ fn append_device_id(json: String, device: Option<DeviceId>) -> String {
     }
 }
 
+pub type SpotifyResponse = HttpResponse;
+
 impl SpotifyConnectr {
     pub fn new(settings: settings::Settings) -> SpotifyConnectr {
         SpotifyConnectr {settings: settings, auth_code: String::new(),
@@ -137,15 +157,15 @@ impl SpotifyConnectr {
         let json_response = http::http(spotify_api::PLAYER_STATE, "", http::HttpMethod::GET, Some(&self.access_token)).unwrap();
         json::decode(&json_response).unwrap()
     }
-    pub fn play(&self, device: Option<DeviceId>, context: Option<&PlayContext>) {
+    pub fn play(&self, device: Option<DeviceId>, context: Option<&PlayContext>) -> SpotifyResponse {
         let query = match context {
             Some(x) => append_device_id(json::encode(x).unwrap(), device),
             None => String::new(),
         };
-        let _ = http::http(spotify_api::PLAY, &query, http::HttpMethod::PUT, Some(&self.access_token));
+        http::http(spotify_api::PLAY, &query, http::HttpMethod::PUT, Some(&self.access_token))
     }
-    pub fn pause(&self, device: Option<DeviceId>) {
+    pub fn pause(&self, device: Option<DeviceId>) -> SpotifyResponse {
         let query = append_device_id(String::new(), device);
-        let _ = http::http(spotify_api::PAUSE, &query, http::HttpMethod::PUT, Some(&self.access_token));
+        http::http(spotify_api::PAUSE, &query, http::HttpMethod::PUT, Some(&self.access_token))
     }
 }
