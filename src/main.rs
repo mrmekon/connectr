@@ -53,4 +53,5 @@ fn main() {
     spotify.set_target_device(None);
     require(spotify.play(Some(&ctx)));
     require(spotify.pause());
+    require(spotify.seek(5000));
 }

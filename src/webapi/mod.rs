@@ -1,4 +1,5 @@
 use std::fmt;
+use std::collections::BTreeMap;
 
 extern crate rustc_serialize;
 use self::rustc_serialize::{Decodable, Decoder, json};
@@ -78,8 +79,14 @@ impl fmt::Display for PlayerState {
 }
 
 pub fn request_oauth_tokens(auth_code: &str, settings: &settings::Settings) -> (String, String) {
-    let query = format!("grant_type=authorization_code&code={}&redirect_uri=http://127.0.0.1:{}&client_id={}&client_secret={}",
-                        auth_code, settings.port, settings.client_id, settings.secret);
+    let query = QueryString::new()
+        .add("grant_type", "authorization_code")
+        .add("code", auth_code)
+        .add("redirect_uri", format!("http://127.0.0.1:{}", settings.port))
+        .add("client_id", settings.client_id.clone())
+        .add("client_secret", settings.secret.clone())
+        .build();
+
     let json_response = http::http(spotify_api::TOKEN, &query, "", http::HttpMethod::POST, None).unwrap();
     parse_spotify_token(&json_response)
 }
@@ -160,10 +167,33 @@ impl PlayContext {
     }
 }
 
-fn device_id_query(device: &Option<DeviceId>) -> String {
-    match device {
-        &Some(ref x) => format!("device_id={}", x),
-        &None => "".to_string()
+struct QueryString {
+    map: BTreeMap<String,String>,
+}
+impl QueryString {
+    fn new() -> QueryString { QueryString { map: BTreeMap::<String,String>::new() } }
+    fn add_opt(&mut self, key: &str, value: Option<String>) -> &mut QueryString {
+        match value {
+            Some(v) => { self.map.insert(key.to_string(), v); },
+            None => {},
+        }
+        self
+    }
+    fn add<A>(&mut self, key: &str, value: A) -> &mut QueryString
+        where A: ToString {
+        self.map.insert(key.to_string(), value.to_string());
+        self
+    }
+    fn build(&self) -> String {
+        let mut s = String::new();
+        for (key, val) in &self.map {
+            match s.len() {
+                0 => { } // '?' inserted in HTTP layer
+                _ => { s = s + "&"; }
+            }
+            s = s + &format!("{}={}", key, val);
+        }
+        s
     }
 }
 
@@ -190,18 +220,20 @@ impl SpotifyConnectr {
         self.refresh_token = refresh_token;
     }
     pub fn request_device_list(&self) -> ConnectDeviceList {
-        let json_response = http::http(spotify_api::DEVICES, "", "", http::HttpMethod::GET, Some(&self.access_token)).unwrap();
+        let json_response = http::http(spotify_api::DEVICES, "", "",
+                                       http::HttpMethod::GET, Some(&self.access_token)).unwrap();
         json::decode(&json_response).unwrap()
     }
     pub fn request_player_state(&self) -> PlayerState {
-        let json_response = http::http(spotify_api::PLAYER_STATE, "", "", http::HttpMethod::GET, Some(&self.access_token)).unwrap();
+        let json_response = http::http(spotify_api::PLAYER_STATE, "", "",
+                                       http::HttpMethod::GET, Some(&self.access_token)).unwrap();
         json::decode(&json_response).unwrap()
     }
     pub fn set_target_device(&mut self, device: Option<DeviceId>) {
         self.device = device;
     }
     pub fn play(&self, context: Option<&PlayContext>) -> SpotifyResponse {
-        let query = device_id_query(&self.device);
+        let query = QueryString::new().add_opt("device_id", self.device.clone()).build();
         let body = match context {
             Some(x) => json::encode(x).unwrap(),
             None => String::new(),
@@ -209,7 +241,14 @@ impl SpotifyConnectr {
         http::http(spotify_api::PLAY, &query, &body, http::HttpMethod::PUT, Some(&self.access_token))
     }
     pub fn pause(&self) -> SpotifyResponse {
-        let query = device_id_query(&self.device);
+        let query = QueryString::new().add_opt("device_id", self.device.clone()).build();
         http::http(spotify_api::PAUSE, &query, "", http::HttpMethod::PUT, Some(&self.access_token))
+    }
+    pub fn seek(&self, position: u32) -> SpotifyResponse {
+        let query = QueryString::new()
+            .add_opt("device_id", self.device.clone())
+            .add("position_ms", position)
+            .build();
+        http::http(spotify_api::SEEK, &query, "", http::HttpMethod::PUT, Some(&self.access_token))
     }
 }
