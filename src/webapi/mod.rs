@@ -101,6 +101,14 @@ pub struct PlayContextOffset {
 impl Default for PlayContextOffset {
     fn default() -> PlayContextOffset { PlayContextOffset { position: None, uri: None } }
 }
+impl Clone for PlayContextOffset {
+    fn clone(&self) -> PlayContextOffset {
+        PlayContextOffset {
+            position: self.position.clone(),
+            uri: self.uri.clone(),
+        }
+    }
+}
 
 #[derive(RustcDecodable, RustcEncodable)]
 pub struct PlayContext {
@@ -114,6 +122,48 @@ impl Default for PlayContext {
 impl PlayContext {
     pub fn new() -> PlayContext {
         PlayContext::default()
+    }
+    pub fn context_uri<'a>(&'a mut self, uri: &str) -> &'a mut PlayContext {
+        self.context_uri = Some(uri.to_string());
+        self
+    }
+    pub fn uri<'a>(&'a mut self, uri: &str) -> &'a mut PlayContext {
+        match self.uris {
+            Some(ref mut uris) => uris.push(uri.to_string()),
+            None => {
+                let mut vec = Vec::<String>::new();
+                vec.push(uri.to_string());
+                self.uris = Some(vec);
+            },
+        };
+        self
+    }
+    pub fn offset_position<'a>(&'a mut self, position: u32) -> &'a mut PlayContext {
+        match self.offset {
+            Some(ref mut o) => o.position = Some(position),
+            None => {
+                let mut o = PlayContextOffset::default();
+                o.position = Some(position);
+                self.offset = Some(o);
+            }
+        };
+        self
+    }
+    pub fn offset_uri<'a>(&'a mut self, uri: &str) -> &'a mut PlayContext {
+        match self.offset {
+            Some(ref mut o) => o.uri = Some(uri.to_string()),
+            None => {
+                let mut o = PlayContextOffset::default();
+                o.uri = Some(uri.to_string());
+                self.offset = Some(o);
+            }
+        };
+        self
+    }
+    pub fn build(&self) -> PlayContext {
+        PlayContext { context_uri: self.context_uri.clone(),
+                      uris: self.uris.clone(),
+                      offset: self.offset.clone() }
     }
 }
 
