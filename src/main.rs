@@ -1,6 +1,7 @@
 
 extern crate connectr;
 use connectr::settings;
+use connectr::SpotifyResponse;
 
 use std::process;
 
@@ -23,6 +24,13 @@ use std::process;
 //    w.wait_for_message();
 //}
 
+fn require(response: SpotifyResponse) {
+    match response.code.unwrap() {
+        200 ... 299 => (),
+        _ => panic!("{}", response)
+    }
+}
+
 fn main() {
     let settings = match settings::read_settings() {
         Some(s) => s,
@@ -39,23 +47,14 @@ fn main() {
 
     let ctx = connectr::PlayContext {
         context_uri: Some("spotify:user:mrmekon:playlist:4XqYlbPdDUsranzjicPCgf".to_string()),
-        uris: Some(vec!["one".to_string(), "two".to_string()]),
-        offset: Some(connectr::PlayContextOffset{position: Some(5), uri: Some("blah".to_string())}),
+        offset: Some(connectr::PlayContextOffset{position: Some(2),..Default::default()}),
+        ..Default::default()
     };
-    let res = spotify.play(Some("deviceid".to_string()), Some(&ctx));
-    println!("result: {}", res);
-
-    let res = spotify.pause(Some("deviceid".to_string()));
-    println!("result: {}", res);
-
-    let res = spotify.play(None, Some(&ctx));
-    println!("result: {}", res);
-
-    let res = spotify.pause(None);
-    println!("result: {}", res);
-
-    let res = spotify.play(None, None);
-    println!("result: {}", res);
+    require(spotify.play(None, Some(&ctx)));
+    require(spotify.pause(None));
+    require(spotify.play(None, Some(&ctx)));
+    require(spotify.pause(None));
+    require(spotify.play(None, None));
 
     //systray(player_state);
     //loop {}

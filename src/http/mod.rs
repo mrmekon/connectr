@@ -26,7 +26,7 @@ pub enum HttpMethod {
 
 pub type HttpErrorString = String;
 pub struct HttpResponse {
-    code: Option<u32>,
+    pub code: Option<u32>,
     data: Result<String, HttpErrorString>,
 }
 
@@ -59,31 +59,38 @@ impl fmt::Display for HttpResponse {
     }
 }
 
-pub fn http(url: &str, query: &str, method: HttpMethod, access_token: Option<&str>) -> HttpResponse {
+pub fn http(url: &str, query: &str, body: &str,
+            method: HttpMethod, access_token: Option<&str>) -> HttpResponse {
     let enc_query = percent_encoding::utf8_percent_encode(&query, percent_encoding::QUERY_ENCODE_SET).collect::<String>();
     let mut data = match method {
-        HttpMethod::POST => { enc_query.as_bytes() }
-        _ => { query.as_bytes() }
+        HttpMethod::POST => { enc_query.as_bytes() },
+        _ => { body.as_bytes() },
+        //_ => { query.as_bytes() }
+    };
+    let query_url = &format!("{}?{}", url, query);
+    let url = match method {
+        HttpMethod::GET | HttpMethod::PUT => match query.len() {
+            0 => url,
+            _ => query_url,
+        },
+        _ => url
+
     };
     let mut response = None;
     let mut json_bytes = Vec::<u8>::new();
     {
         let mut easy = Easy::new();
+        easy.url(url).unwrap();
         match method {
-            HttpMethod::GET => {
-                let get_url = format!("{}?{}", url, query);
-                easy.url(&get_url).unwrap();
-            }
             HttpMethod::POST => {
-                easy.url(url).unwrap();
                 easy.post(true).unwrap();
                 easy.post_field_size(data.len() as u64).unwrap();
             }
             HttpMethod::PUT => {
-                easy.url(url).unwrap();
                 easy.put(true).unwrap();
                 easy.post_field_size(data.len() as u64).unwrap();
             }
+            _ => {}
         }
 
         match access_token {
