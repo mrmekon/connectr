@@ -53,8 +53,8 @@ impl fmt::Display for HttpResponse {
         };
         let _ = write!(f, "Code: {}\n", code);
         match self.data {
-            Ok(ref s) => {write!(f, "{}\n", s)}
-            Err(ref s) => {write!(f, "ERROR: {}\n", s)}
+            Ok(ref s) => {write!(f, "Response: {}", s)}
+            Err(ref s) => {write!(f, "ERROR: {}", s)}
         }
     }
 }

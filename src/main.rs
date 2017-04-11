@@ -34,24 +34,28 @@ fn main() {
     let device_list = spotify.request_device_list();
     let player_state = spotify.request_player_state();
 
-    for dev in device_list.devices {
-        println!("{:?}", dev);
-    }
-    println!("State: {:?}", player_state);
+    println!("Devices:\n{}", device_list);
+    println!("State:\n{}", player_state);
 
-    let offset = connectr::PlayContextOffset {
-        position: Some(5), uri: Some("blah".to_string()),
-    };
     let ctx = connectr::PlayContext {
         context_uri: Some("spotify:user:mrmekon:playlist:4XqYlbPdDUsranzjicPCgf".to_string()),
         uris: Some(vec!["one".to_string(), "two".to_string()]),
-        offset: Some(offset),
+        offset: Some(connectr::PlayContextOffset{position: Some(5), uri: Some("blah".to_string())}),
     };
-    spotify.play(Some("deviceid".to_string()), Some(&ctx));
-    spotify.pause(Some("deviceid".to_string()));
-    spotify.play(None, Some(&ctx));
-    spotify.pause(None);
-    spotify.play(None, None);
+    let res = spotify.play(Some("deviceid".to_string()), Some(&ctx));
+    println!("result: {}", res);
+
+    let res = spotify.pause(Some("deviceid".to_string()));
+    println!("result: {}", res);
+
+    let res = spotify.play(None, Some(&ctx));
+    println!("result: {}", res);
+
+    let res = spotify.pause(None);
+    println!("result: {}", res);
+
+    let res = spotify.play(None, None);
+    println!("result: {}", res);
 
     //systray(player_state);
     //loop {}
