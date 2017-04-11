@@ -47,6 +47,8 @@ fn main() {
         uris: Some(vec!["one".to_string(), "two".to_string()]),
         offset: Some(offset),
     };
+    spotify.play(Some("deviceid".to_string()), Some(&ctx));
+    spotify.pause(Some("deviceid".to_string()));
     spotify.play(None, Some(&ctx));
     spotify.pause(None);
     spotify.play(None, None);

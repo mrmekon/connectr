@@ -95,6 +95,28 @@ impl Default for PlayContext {
     fn default() -> PlayContext { PlayContext { context_uri: None, uris: None, offset: None } }
 }
 
+fn append_to_json_string<T>(json: String, key: String, value: T) -> String
+    where T: ToJson {
+    // Highly wasteful implementation.  struct -> string -> obj -> string
+    let jdata = Json::from_str(&json).unwrap();
+    let mut jobj = jdata.into_object().unwrap();
+    jobj.insert(key, value.to_json());
+    Json::Object(jobj).to_string()
+}
+
+fn append_device_id(json: String, device: Option<DeviceId>) -> String {
+    match device {
+        Some(x) => {
+            // Convert empty string to empty JSON
+            let json = match json.len() {
+                0 => "{}".to_string(),
+                _ => json
+            };
+            append_to_json_string(json, "device_id".to_string(), x)
+        },
+        None => json
+    }
+}
 
 impl SpotifyConnectr {
     pub fn new(settings: settings::Settings) -> SpotifyConnectr {
@@ -117,21 +139,13 @@ impl SpotifyConnectr {
     }
     pub fn play(&self, device: Option<DeviceId>, context: Option<&PlayContext>) {
         let query = match context {
-            Some(x) => {
-                //json::encode(x).unwrap()
-                let jstr = json::encode(x).unwrap();
-                let jdata = Json::from_str(&jstr).unwrap();
-                let jobj = jdata.into_object().unwrap();
-                jobj.insert("device".to_string(), device.unwrap().to_json());
-                String::new()
-            },
+            Some(x) => append_device_id(json::encode(x).unwrap(), device),
             None => String::new(),
         };
-        println!("PUT query: {}", query);
         let _ = http::http(spotify_api::PLAY, &query, http::HttpMethod::PUT, Some(&self.access_token));
     }
     pub fn pause(&self, device: Option<DeviceId>) {
-        let query = String::new();
+        let query = append_device_id(String::new(), device);
         let _ = http::http(spotify_api::PAUSE, &query, http::HttpMethod::PUT, Some(&self.access_token));
     }
 }
