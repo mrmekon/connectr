@@ -50,7 +50,7 @@ fn main() {
         .offset_position(2)
         .build();
 
-    require(spotify.play(None, Some(&ctx)));
-    require(spotify.pause(None));
-    require(spotify.play(None, None));
+    spotify.set_target_device(None);
+    require(spotify.play(Some(&ctx)));
+    require(spotify.pause());
 }
