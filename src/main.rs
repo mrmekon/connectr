@@ -1,5 +1,4 @@
 extern crate connectr;
-use connectr::settings;
 use connectr::SpotifyResponse;
 
 use std::process;
@@ -31,18 +30,19 @@ fn require(response: SpotifyResponse) {
 }
 
 fn main() {
-    let settings = match settings::read_settings() {
-        Some(s) => s,
-        None => process::exit(0),
-    };
-    let mut spotify = connectr::SpotifyConnectr::new(settings);
+    let mut spotify = connectr::SpotifyConnectr::new();
     spotify.connect();
 
     let device_list = spotify.request_device_list();
     let player_state = spotify.request_player_state();
 
-    println!("Devices:\n{}", device_list);
-    println!("State:\n{}", player_state);
+    println!("Visible Devices:");
+    for dev in device_list {
+        println!("{}", dev);
+    }
+    println!("");
+
+    println!("Playback State:\n{}", player_state);
 
     let ctx = connectr::PlayContext::new()
         .context_uri("spotify:user:mrmekon:playlist:4XqYlbPdDUsranzjicPCgf")

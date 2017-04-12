@@ -1,4 +1,8 @@
+extern crate time;
+
 use std::fmt;
+use std::iter;
+use std::process;
 use std::collections::BTreeMap;
 
 extern crate rustc_serialize;
@@ -10,12 +14,13 @@ use super::settings;
 use super::spotify_api;
 use super::http::HttpResponse;
 
-pub fn parse_spotify_token(json: &str) -> (String, String) {
+pub fn parse_spotify_token(json: &str) -> (String, String, u64) {
     let json_data = Json::from_str(&json).unwrap();
     let obj = json_data.as_object().unwrap();
     let access_token = obj.get("access_token").unwrap().as_string().unwrap();
     let refresh_token = obj.get("refresh_token").unwrap().as_string().unwrap();
-    (String::from(access_token),String::from(refresh_token))
+    let expires_in = obj.get("expires_in").unwrap().as_u64().unwrap();
+    (String::from(access_token),String::from(refresh_token), expires_in)
 }
 
 //#[derive(RustcDecodable, RustcEncodable, Debug)]
@@ -27,6 +32,12 @@ pub struct ConnectDevice {
     pub name: String,
     pub device_type: String,
     pub volume_percent: Option<u32>
+}
+
+impl fmt::Display for ConnectDevice {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:<40} <{}>", self.name, self.id)
+    }
 }
 
 impl Decodable for ConnectDevice {
@@ -55,16 +66,36 @@ impl Decodable for ConnectDevice {
 
 #[derive(RustcDecodable, RustcEncodable)]
 pub struct ConnectDeviceList {
-    pub devices: Vec<ConnectDevice>
+    pub devices: Vec<ConnectDevice>,
 }
 
 impl fmt::Display for ConnectDeviceList {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         for dev in &self.devices {
-            let _ = write!(f, "{:?}\n", dev);
+            let _ = write!(f, "{}\n", dev);
         }
         Ok(())
     }
+}
+
+impl iter::IntoIterator for ConnectDeviceList {
+    type Item = ConnectDevice;
+    type IntoIter = ::std::vec::IntoIter<ConnectDevice>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.devices.into_iter()
+    }
+}
+
+#[derive(RustcDecodable, RustcEncodable, Debug)]
+pub struct ConnectPlaybackItem {
+    duration_ms: u32,
+    name: String,
+    uri: String,
+}
+
+#[derive(RustcDecodable, RustcEncodable, Debug)]
+pub struct ConnectContext {
+    uri: String,
 }
 
 #[derive(RustcDecodable, RustcEncodable, Debug)]
@@ -73,17 +104,36 @@ pub struct PlayerState {
     pub device: ConnectDevice,
     pub progress_ms: Option<u32>,
     pub is_playing: bool,
+    pub item: ConnectPlaybackItem,
     pub shuffle_state: bool,
     pub repeat_state: String,
+    pub context: ConnectContext,
 }
 
 impl fmt::Display for PlayerState {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:?}\n", self)
+        let play_state = match self.is_playing {
+            true => "Playing",
+            false => "Paused",
+        };
+        let volume = match self.device.volume_percent {
+            Some(x) => x.to_string(),
+            None => "???".to_string(),
+        };
+        let position: f64 = match self.progress_ms {
+            Some(x) => (x as f64)/1000.0,
+            None => 0.0,
+        };
+        let duration: f64 = (self.item.duration_ms as f64) / 1000.0;
+        let progress: f64 = position/duration*100.0;
+        write!(f, "{} on {} [Volume {}%]\n{} <{}>\n{}s / {}s ({:.1}%)\n",
+               play_state, self.device.name, volume,
+               &self.item.name, &self.item.uri,
+               position, duration, progress)
     }
 }
 
-pub fn request_oauth_tokens(auth_code: &str, settings: &settings::Settings) -> (String, String) {
+pub fn request_oauth_tokens(auth_code: &str, settings: &settings::Settings) -> (String, String, u64) {
     let query = QueryString::new()
         .add("grant_type", "authorization_code")
         .add("code", auth_code)
@@ -228,31 +278,58 @@ struct DeviceIdList {
 pub struct SpotifyConnectr {
     settings: settings::Settings,
     auth_code: String,
-    access_token: String,
-    refresh_token: String,
+    access_token: Option<String>,
+    refresh_token: Option<String>,
+    expire_utc: Option<u64>,
     device: Option<DeviceId>,
 }
 
 impl SpotifyConnectr {
-    pub fn new(settings: settings::Settings) -> SpotifyConnectr {
-        SpotifyConnectr {settings: settings, auth_code: String::new(),
-                         access_token: String::new(), refresh_token: String::new(),
+    pub fn new() -> SpotifyConnectr {
+        let settings = match settings::read_settings() {
+            Some(s) => s,
+            None => process::exit(0),
+        };
+        let access = match settings.access_token {
+            Some(ref x) => x.clone(),
+            None => String::new(),
+        };
+        let refresh = match settings.refresh_token {
+            Some(ref x) => x.clone(),
+            None => String::new(),
+        };
+        let expire = settings.expire_utc;
+        let access = settings.access_token.clone();
+        let refresh = settings.refresh_token.clone();
+        SpotifyConnectr {settings: settings,
+                         auth_code: String::new(),
+                         access_token: access,
+                         refresh_token: refresh,
+                         expire_utc: expire,
                          device: None}
     }
     pub fn connect(&mut self) {
+        let now = time::now_utc().to_timespec().sec as u64;
+        let expire_utc = self.expire_utc.unwrap_or(0);
+        if self.access_token.is_some() && now < expire_utc {
+            println!("Reusing saved tokens");
+            return ()
+        }
+        println!("Requesting new auth code");
         self.auth_code = http::authenticate(&self.settings);
-        let (access_token, refresh_token) = request_oauth_tokens(&self.auth_code, &self.settings);
-        self.access_token = access_token;
-        self.refresh_token = refresh_token;
+        let (access_token, refresh_token, expires_in) = request_oauth_tokens(&self.auth_code, &self.settings);
+        let _ = settings::save_tokens(&access_token, &refresh_token, expires_in);
+        self.access_token = Some(access_token);
+        self.refresh_token = Some(refresh_token);
     }
     pub fn request_device_list(&self) -> ConnectDeviceList {
         let json_response = http::http(spotify_api::DEVICES, "", "",
-                                       http::HttpMethod::GET, Some(&self.access_token)).unwrap();
+                                       http::HttpMethod::GET, self.access_token.as_ref()).unwrap();
         json::decode(&json_response).unwrap()
     }
     pub fn request_player_state(&self) -> PlayerState {
         let json_response = http::http(spotify_api::PLAYER_STATE, "", "",
-                                       http::HttpMethod::GET, Some(&self.access_token)).unwrap();
+                                       http::HttpMethod::GET, self.access_token.as_ref()).unwrap();
         json::decode(&json_response).unwrap()
     }
     pub fn set_target_device(&mut self, device: Option<DeviceId>) {
@@ -264,54 +341,54 @@ impl SpotifyConnectr {
             Some(x) => json::encode(x).unwrap(),
             None => String::new(),
         };
-        http::http(spotify_api::PLAY, &query, &body, http::HttpMethod::PUT, Some(&self.access_token))
+        http::http(spotify_api::PLAY, &query, &body, http::HttpMethod::PUT, self.access_token.as_ref())
     }
     pub fn pause(&self) -> SpotifyResponse {
         let query = QueryString::new().add_opt("device_id", self.device.clone()).build();
-        http::http(spotify_api::PAUSE, &query, "", http::HttpMethod::PUT, Some(&self.access_token))
+        http::http(spotify_api::PAUSE, &query, "", http::HttpMethod::PUT, self.access_token.as_ref())
     }
     pub fn next(&self) -> SpotifyResponse {
         let query = QueryString::new().add_opt("device_id", self.device.clone()).build();
-        http::http(spotify_api::NEXT, &query, "", http::HttpMethod::POST, Some(&self.access_token))
+        http::http(spotify_api::NEXT, &query, "", http::HttpMethod::POST, self.access_token.as_ref())
     }
     pub fn previous(&self) -> SpotifyResponse {
         let query = QueryString::new().add_opt("device_id", self.device.clone()).build();
-        http::http(spotify_api::PREVIOUS, &query, "", http::HttpMethod::POST, Some(&self.access_token))
+        http::http(spotify_api::PREVIOUS, &query, "", http::HttpMethod::POST, self.access_token.as_ref())
     }
     pub fn seek(&self, position: u32) -> SpotifyResponse {
         let query = QueryString::new()
             .add_opt("device_id", self.device.clone())
             .add("position_ms", position)
             .build();
-        http::http(spotify_api::SEEK, &query, "", http::HttpMethod::PUT, Some(&self.access_token))
+        http::http(spotify_api::SEEK, &query, "", http::HttpMethod::PUT, self.access_token.as_ref())
     }
     pub fn volume(&self, volume: u32) -> SpotifyResponse {
         let query = QueryString::new()
             .add_opt("device_id", self.device.clone())
             .add("volume_percent", volume)
             .build();
-        http::http(spotify_api::VOLUME, &query, "", http::HttpMethod::PUT, Some(&self.access_token))
+        http::http(spotify_api::VOLUME, &query, "", http::HttpMethod::PUT, self.access_token.as_ref())
     }
     pub fn shuffle(&self, shuffle: bool) -> SpotifyResponse {
         let query = QueryString::new()
             .add_opt("device_id", self.device.clone())
             .add("state", shuffle)
             .build();
-        http::http(spotify_api::SHUFFLE, &query, "", http::HttpMethod::PUT, Some(&self.access_token))
+        http::http(spotify_api::SHUFFLE, &query, "", http::HttpMethod::PUT, self.access_token.as_ref())
     }
     pub fn repeat(&self, repeat: SpotifyRepeat) -> SpotifyResponse {
         let query = QueryString::new()
             .add_opt("device_id", self.device.clone())
             .add("state", repeat)
             .build();
-        http::http(spotify_api::REPEAT, &query, "", http::HttpMethod::PUT, Some(&self.access_token))
+        http::http(spotify_api::REPEAT, &query, "", http::HttpMethod::PUT, self.access_token.as_ref())
     }
     pub fn transfer_multi(&self, devices: Vec<String>, play: bool) -> SpotifyResponse {
         let body = json::encode(&DeviceIdList {device_ids: devices, play: play}).unwrap();
-        http::http(spotify_api::PLAYER, "", &body, http::HttpMethod::PUT, Some(&self.access_token))
+        http::http(spotify_api::PLAYER, "", &body, http::HttpMethod::PUT, self.access_token.as_ref())
     }
     pub fn transfer(&self, device: String, play: bool) -> SpotifyResponse {
         let body = json::encode(&DeviceIdList {device_ids: vec![device], play: play}).unwrap();
-        http::http(spotify_api::PLAYER, "", &body, http::HttpMethod::PUT, Some(&self.access_token))
+        http::http(spotify_api::PLAYER, "", &body, http::HttpMethod::PUT, self.access_token.as_ref())
     }
 }
