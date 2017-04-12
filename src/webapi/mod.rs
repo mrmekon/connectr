@@ -1,4 +1,5 @@
 extern crate time;
+extern crate timer;
 
 use std::fmt;
 use std::iter;
@@ -107,7 +108,7 @@ pub struct PlayerState {
     pub item: ConnectPlaybackItem,
     pub shuffle_state: bool,
     pub repeat_state: String,
-    pub context: ConnectContext,
+    pub context: Option<ConnectContext>,
 }
 
 impl fmt::Display for PlayerState {
@@ -290,14 +291,6 @@ impl SpotifyConnectr {
             Some(s) => s,
             None => process::exit(0),
         };
-        let access = match settings.access_token {
-            Some(ref x) => x.clone(),
-            None => String::new(),
-        };
-        let refresh = match settings.refresh_token {
-            Some(ref x) => x.clone(),
-            None => String::new(),
-        };
         let expire = settings.expire_utc;
         let access = settings.access_token.clone();
         let refresh = settings.refresh_token.clone();
@@ -308,10 +301,13 @@ impl SpotifyConnectr {
                          expire_utc: expire,
                          device: None}
     }
-    pub fn connect(&mut self) {
+    fn is_token_expired(&self) -> bool {
         let now = time::now_utc().to_timespec().sec as u64;
         let expire_utc = self.expire_utc.unwrap_or(0);
-        if self.access_token.is_some() && now < expire_utc {
+        expire_utc <= (now - 60)
+    }
+    pub fn connect(&mut self) {
+        if self.access_token.is_some() && !self.is_token_expired() {
             println!("Reusing saved tokens");
             return ()
         }
