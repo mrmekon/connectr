@@ -60,7 +60,7 @@ impl fmt::Display for HttpResponse {
 }
 
 pub fn http(url: &str, query: &str, body: &str,
-            method: HttpMethod, access_token: Option<&str>) -> HttpResponse {
+            method: HttpMethod, access_token: Option<&String>) -> HttpResponse {
     let enc_query = percent_encoding::utf8_percent_encode(&query, percent_encoding::QUERY_ENCODE_SET).collect::<String>();
     let mut data = match method {
         HttpMethod::POST => { enc_query.as_bytes() },
