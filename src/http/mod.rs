@@ -59,8 +59,14 @@ impl fmt::Display for HttpResponse {
     }
 }
 
+pub enum AccessToken<'a> {
+    Bearer(&'a str),
+    Basic(&'a str),
+    None,
+}
+
 pub fn http(url: &str, query: &str, body: &str,
-            method: HttpMethod, access_token: Option<&String>) -> HttpResponse {
+            method: HttpMethod, access_token: AccessToken) -> HttpResponse {
     let enc_query = percent_encoding::utf8_percent_encode(&query, percent_encoding::QUERY_ENCODE_SET).collect::<String>();
     let mut data = match method {
         HttpMethod::POST => { enc_query.as_bytes() },
@@ -94,13 +100,18 @@ pub fn http(url: &str, query: &str, body: &str,
         }
 
         match access_token {
-            Some(access_token) => {
+            AccessToken::None => {},
+            access_token => {
+                let request = match access_token {
+                    AccessToken::Bearer(token) => ("Bearer", token),
+                    AccessToken::Basic(token) => ("Basic", token),
+                    _ => ("",""),
+                };
                 let mut list = List::new();
-                let header = format!("Authorization: Bearer {}", access_token);
+                let header = format!("Authorization: {} {}", request.0, request.1);
                 list.append(&header).unwrap();
                 easy.http_headers(list).unwrap();
             }
-            None => {}
         }
 
         {

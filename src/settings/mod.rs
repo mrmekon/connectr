@@ -49,10 +49,8 @@ pub fn read_settings() -> Option<Settings> {
 }
 
 pub type SettingsError = String;
-pub fn save_tokens(access: &str, refresh: &str, expire: u64) -> Result<(), SettingsError> {
+pub fn save_tokens(access: &str, refresh: &str, expire_utc: u64) -> Result<(), SettingsError> {
     let mut conf = Ini::load_from_file("connectr.ini").unwrap();
-    let now = time::now_utc().to_timespec().sec as u64;
-    let expire_utc = now + expire;
     conf.with_section(Some("tokens".to_owned()))
         .set("access", access)
         .set("refresh", refresh)
