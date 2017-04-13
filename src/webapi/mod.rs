@@ -366,7 +366,7 @@ impl SpotifyConnectr {
         let _ = self.schedule_token_refresh();
     }
     pub fn connect(&mut self) {
-        if self.access_token.is_some() && !self.is_token_expired() && false {
+        if self.access_token.is_some() && !self.is_token_expired() {
             println!("Reusing saved credentials.");
             let _ = self.schedule_token_refresh();
             return ()
