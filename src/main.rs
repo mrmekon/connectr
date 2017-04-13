@@ -1,8 +1,6 @@
 extern crate connectr;
 use connectr::SpotifyResponse;
 
-use std::process;
-
 //extern crate systray;
 
 //#[cfg(target_os = "windows")]
@@ -63,4 +61,8 @@ fn main() {
 
     let player_state = spotify.request_player_state();
     println!("Final state:\n{}", player_state);
+
+    loop {
+        spotify.await_once(true);
+    }
 }

@@ -25,6 +25,7 @@ url = "1.4.0"
 rust-ini = "0.9"
 time = "0.1"
 timer = "0.1.6"
+chrono = "0.3.0"
 
 [target."cfg(windows)".dependencies]
 [target."cfg(all(unix, not(target_os = \"macos\")))".dependencies]

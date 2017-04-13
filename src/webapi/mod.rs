@@ -1,10 +1,12 @@
 extern crate time;
 extern crate timer;
+extern crate chrono;
 
 use std::fmt;
 use std::iter;
 use std::process;
 use std::collections::BTreeMap;
+use std::sync::mpsc::{channel, Receiver};
 
 extern crate rustc_serialize;
 use self::rustc_serialize::{Decodable, Decoder, json};
@@ -19,7 +21,10 @@ pub fn parse_spotify_token(json: &str) -> (String, String, u64) {
     let json_data = Json::from_str(&json).unwrap();
     let obj = json_data.as_object().unwrap();
     let access_token = obj.get("access_token").unwrap().as_string().unwrap();
-    let refresh_token = obj.get("refresh_token").unwrap().as_string().unwrap();
+    let refresh_token = match obj.get("refresh_token") {
+        Some(j) => j.as_string().unwrap(),
+        None => "",
+    };
     let expires_in = obj.get("expires_in").unwrap().as_u64().unwrap();
     (String::from(access_token),String::from(refresh_token), expires_in)
 }
@@ -143,7 +148,8 @@ pub fn request_oauth_tokens(auth_code: &str, settings: &settings::Settings) -> (
         .add("client_secret", settings.secret.clone())
         .build();
 
-    let json_response = http::http(spotify_api::TOKEN, &query, "", http::HttpMethod::POST, None).unwrap();
+    let json_response = http::http(spotify_api::TOKEN, &query, "", http::HttpMethod::POST,
+                                   http::AccessToken::None).unwrap();
     parse_spotify_token(&json_response)
 }
 
@@ -283,6 +289,10 @@ pub struct SpotifyConnectr {
     refresh_token: Option<String>,
     expire_utc: Option<u64>,
     device: Option<DeviceId>,
+
+    refresh_timer: timer::Timer,
+    refresh_timer_guard: Option<timer::Guard>,
+    refresh_timer_channel: Option<Receiver<()>>,
 }
 
 impl SpotifyConnectr {
@@ -299,33 +309,110 @@ impl SpotifyConnectr {
                          access_token: access,
                          refresh_token: refresh,
                          expire_utc: expire,
-                         device: None}
+                         device: None,
+                         refresh_timer: timer::Timer::new(),
+                         refresh_timer_guard: None,
+                         refresh_timer_channel: None}
     }
     fn is_token_expired(&self) -> bool {
         let now = time::now_utc().to_timespec().sec as u64;
         let expire_utc = self.expire_utc.unwrap_or(0);
         expire_utc <= (now - 60)
     }
-    pub fn connect(&mut self) {
-        if self.access_token.is_some() && !self.is_token_expired() {
-            println!("Reusing saved tokens");
+    fn expire_offset_to_utc(&self, expires_in: u64) -> u64 {
+        let now = time::now_utc().to_timespec().sec as u64;
+        now + expires_in
+    }
+    fn expire_utc_to_offset(&self, expire_utc: u64) -> u64 {
+        let now = time::now_utc().to_timespec().sec as i64;
+        let offset = expire_utc as i64 - now;
+        match offset {
+            x if x > 0 => x as u64,
+            _ => 0,
+        }
+    }
+    fn schedule_token_refresh(&mut self) -> Result<(), ()> {
+        match self.expire_utc {
+            Some(expire_utc) => {
+                let (tx, rx) = channel::<()>();
+                self.refresh_timer_channel = Some(rx);
+                let expire_offset = self.expire_utc_to_offset(expire_utc) as i64;
+                let expire_offset = chrono::Duration::seconds(expire_offset);
+                let closure = move || { tx.send(()).unwrap(); };
+                self.refresh_timer_guard = Some(self.refresh_timer.schedule_with_delay(expire_offset, closure));
+                Ok(())
+            }
+            _ => Err(())
+        }
+    }
+    pub fn await_once(&mut self, blocking: bool) {
+        // Choose between blocking or non-blocking receive.
+        let recv_fn: Box<Fn(&Receiver<()>) -> bool> = match blocking {
+            true  => Box::new(move |rx| { match rx.recv() { Ok(_) => true, Err(_) => false } }),
+            false => Box::new(move |rx| { match rx.try_recv() { Ok(_) => true, Err(_) => false } }),
+        };
+        let need_refresh = match self.refresh_timer_channel.as_ref() {
+            Some(rx) => recv_fn(rx),
+            _ => false,
+        };
+        if !need_refresh {
             return ()
         }
-        println!("Requesting new auth code");
+        self.refresh_timer_channel = None;
+        let (access_token, expires_in) = self.refresh_oauth_tokens();
+        self.access_token = Some(access_token);
+        self.expire_utc = Some(self.expire_offset_to_utc(expires_in));
+        println!("Refreshed credentials.");
+        let _ = self.schedule_token_refresh();
+    }
+    pub fn connect(&mut self) {
+        if self.access_token.is_some() && !self.is_token_expired() && false {
+            println!("Reusing saved credentials.");
+            let _ = self.schedule_token_refresh();
+            return ()
+        }
+        println!("Requesting fresh credentials.");
         self.auth_code = http::authenticate(&self.settings);
         let (access_token, refresh_token, expires_in) = request_oauth_tokens(&self.auth_code, &self.settings);
-        let _ = settings::save_tokens(&access_token, &refresh_token, expires_in);
+        let expire_utc = self.expire_offset_to_utc(expires_in);
+        let _ = settings::save_tokens(&access_token, &refresh_token, expire_utc);
         self.access_token = Some(access_token);
         self.refresh_token = Some(refresh_token);
+        self.expire_utc = Some(expire_utc);
+        let _ = self.schedule_token_refresh();
+    }
+    pub fn bearer_token(&self) -> http::AccessToken {
+        match self.access_token {
+            Some(ref x) => http::AccessToken::Bearer(x),
+            None => http::AccessToken::None,
+        }
+    }
+    pub fn basic_token(&self) -> http::AccessToken {
+        match self.access_token {
+            Some(ref x) => http::AccessToken::Basic(x),
+            None => http::AccessToken::None,
+        }
+    }
+    pub fn refresh_oauth_tokens(&self) -> (String, u64) {
+        let query = QueryString::new()
+            .add("grant_type", "refresh_token")
+            .add("refresh_token", self.refresh_token.as_ref().unwrap())
+            .add("client_id", self.settings.client_id.clone())
+            .add("client_secret", self.settings.secret.clone())
+            .build();
+        let json_response = http::http(spotify_api::TOKEN, &query, "",
+                                       http::HttpMethod::POST, http::AccessToken::None).unwrap();
+        let (access_token, _, expires_in) = parse_spotify_token(&json_response);
+        (access_token, expires_in)
     }
     pub fn request_device_list(&self) -> ConnectDeviceList {
         let json_response = http::http(spotify_api::DEVICES, "", "",
-                                       http::HttpMethod::GET, self.access_token.as_ref()).unwrap();
+                                       http::HttpMethod::GET, self.bearer_token()).unwrap();
         json::decode(&json_response).unwrap()
     }
     pub fn request_player_state(&self) -> PlayerState {
         let json_response = http::http(spotify_api::PLAYER_STATE, "", "",
-                                       http::HttpMethod::GET, self.access_token.as_ref()).unwrap();
+                                       http::HttpMethod::GET, self.bearer_token()).unwrap();
         json::decode(&json_response).unwrap()
     }
     pub fn set_target_device(&mut self, device: Option<DeviceId>) {
@@ -337,54 +424,54 @@ impl SpotifyConnectr {
             Some(x) => json::encode(x).unwrap(),
             None => String::new(),
         };
-        http::http(spotify_api::PLAY, &query, &body, http::HttpMethod::PUT, self.access_token.as_ref())
+        http::http(spotify_api::PLAY, &query, &body, http::HttpMethod::PUT, self.bearer_token())
     }
     pub fn pause(&self) -> SpotifyResponse {
         let query = QueryString::new().add_opt("device_id", self.device.clone()).build();
-        http::http(spotify_api::PAUSE, &query, "", http::HttpMethod::PUT, self.access_token.as_ref())
+        http::http(spotify_api::PAUSE, &query, "", http::HttpMethod::PUT, self.bearer_token())
     }
     pub fn next(&self) -> SpotifyResponse {
         let query = QueryString::new().add_opt("device_id", self.device.clone()).build();
-        http::http(spotify_api::NEXT, &query, "", http::HttpMethod::POST, self.access_token.as_ref())
+        http::http(spotify_api::NEXT, &query, "", http::HttpMethod::POST, self.bearer_token())
     }
     pub fn previous(&self) -> SpotifyResponse {
         let query = QueryString::new().add_opt("device_id", self.device.clone()).build();
-        http::http(spotify_api::PREVIOUS, &query, "", http::HttpMethod::POST, self.access_token.as_ref())
+        http::http(spotify_api::PREVIOUS, &query, "", http::HttpMethod::POST, self.bearer_token())
     }
     pub fn seek(&self, position: u32) -> SpotifyResponse {
         let query = QueryString::new()
             .add_opt("device_id", self.device.clone())
             .add("position_ms", position)
             .build();
-        http::http(spotify_api::SEEK, &query, "", http::HttpMethod::PUT, self.access_token.as_ref())
+        http::http(spotify_api::SEEK, &query, "", http::HttpMethod::PUT, self.bearer_token())
     }
     pub fn volume(&self, volume: u32) -> SpotifyResponse {
         let query = QueryString::new()
             .add_opt("device_id", self.device.clone())
             .add("volume_percent", volume)
             .build();
-        http::http(spotify_api::VOLUME, &query, "", http::HttpMethod::PUT, self.access_token.as_ref())
+        http::http(spotify_api::VOLUME, &query, "", http::HttpMethod::PUT, self.bearer_token())
     }
     pub fn shuffle(&self, shuffle: bool) -> SpotifyResponse {
         let query = QueryString::new()
             .add_opt("device_id", self.device.clone())
             .add("state", shuffle)
             .build();
-        http::http(spotify_api::SHUFFLE, &query, "", http::HttpMethod::PUT, self.access_token.as_ref())
+        http::http(spotify_api::SHUFFLE, &query, "", http::HttpMethod::PUT, self.bearer_token())
     }
     pub fn repeat(&self, repeat: SpotifyRepeat) -> SpotifyResponse {
         let query = QueryString::new()
             .add_opt("device_id", self.device.clone())
             .add("state", repeat)
             .build();
-        http::http(spotify_api::REPEAT, &query, "", http::HttpMethod::PUT, self.access_token.as_ref())
+        http::http(spotify_api::REPEAT, &query, "", http::HttpMethod::PUT, self.bearer_token())
     }
     pub fn transfer_multi(&self, devices: Vec<String>, play: bool) -> SpotifyResponse {
         let body = json::encode(&DeviceIdList {device_ids: devices, play: play}).unwrap();
-        http::http(spotify_api::PLAYER, "", &body, http::HttpMethod::PUT, self.access_token.as_ref())
+        http::http(spotify_api::PLAYER, "", &body, http::HttpMethod::PUT, self.bearer_token())
     }
     pub fn transfer(&self, device: String, play: bool) -> SpotifyResponse {
         let body = json::encode(&DeviceIdList {device_ids: vec![device], play: play}).unwrap();
-        http::http(spotify_api::PLAYER, "", &body, http::HttpMethod::PUT, self.access_token.as_ref())
+        http::http(spotify_api::PLAYER, "", &body, http::HttpMethod::PUT, self.bearer_token())
     }
 }
