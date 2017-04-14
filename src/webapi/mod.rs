@@ -17,6 +17,9 @@ use super::settings;
 use super::spotify_api;
 use super::http::HttpResponse;
 
+pub type DeviceId = String;
+pub type SpotifyResponse = HttpResponse;
+
 pub fn parse_spotify_token(json: &str) -> (String, String, u64) {
     let json_data = Json::from_str(&json).unwrap();
     let obj = json_data.as_object().unwrap();
@@ -93,10 +96,24 @@ impl iter::IntoIterator for ConnectDeviceList {
 }
 
 #[derive(RustcDecodable, RustcEncodable, Debug)]
+pub struct ConnectPlaybackArtist {
+    pub name: String,
+    pub uri: String,
+}
+
+#[derive(RustcDecodable, RustcEncodable, Debug)]
+pub struct ConnectPlaybackAlbum {
+    pub name: String,
+    pub uri: String,
+}
+
+#[derive(RustcDecodable, RustcEncodable, Debug)]
 pub struct ConnectPlaybackItem {
-    duration_ms: u32,
-    name: String,
-    uri: String,
+    pub duration_ms: u32,
+    pub name: String,
+    pub uri: String,
+    pub album: ConnectPlaybackAlbum,
+    pub artists: Vec<ConnectPlaybackArtist>,
 }
 
 #[derive(RustcDecodable, RustcEncodable, Debug)]
@@ -152,8 +169,6 @@ pub fn request_oauth_tokens(auth_code: &str, settings: &settings::Settings) -> (
                                    http::AccessToken::None).unwrap();
     parse_spotify_token(&json_response)
 }
-
-pub type DeviceId = String;
 
 #[derive(RustcDecodable, RustcEncodable)]
 pub struct PlayContextOffset {
@@ -258,8 +273,6 @@ impl QueryString {
         s
     }
 }
-
-pub type SpotifyResponse = HttpResponse;
 
 pub enum SpotifyRepeat {
     Off,
@@ -466,12 +479,15 @@ impl SpotifyConnectr {
             .build();
         http::http(spotify_api::REPEAT, &query, "", http::HttpMethod::PUT, self.bearer_token())
     }
-    pub fn transfer_multi(&self, devices: Vec<String>, play: bool) -> SpotifyResponse {
+    pub fn transfer_multi(&mut self, devices: Vec<String>, play: bool) -> SpotifyResponse {
+        let device = devices[0].clone();
         let body = json::encode(&DeviceIdList {device_ids: devices, play: play}).unwrap();
+        self.set_target_device(Some(device));
         http::http(spotify_api::PLAYER, "", &body, http::HttpMethod::PUT, self.bearer_token())
     }
-    pub fn transfer(&self, device: String, play: bool) -> SpotifyResponse {
-        let body = json::encode(&DeviceIdList {device_ids: vec![device], play: play}).unwrap();
+    pub fn transfer(&mut self, device: String, play: bool) -> SpotifyResponse {
+        let body = json::encode(&DeviceIdList {device_ids: vec![device.clone()], play: play}).unwrap();
+        self.set_target_device(Some(device));
         http::http(spotify_api::PLAYER, "", &body, http::HttpMethod::PUT, self.bearer_token())
     }
 }

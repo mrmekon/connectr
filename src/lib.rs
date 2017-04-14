@@ -2,7 +2,15 @@ pub mod http;
 pub mod settings;
 pub mod webapi;
 
+// Re-export webapi interface to connectr root
 pub use webapi::*;
+
+#[cfg(target_os = "macos")]
+pub mod osx;
+
+#[cfg(target_os = "macos")]
+#[macro_use]
+extern crate objc;
 
 extern crate rustc_serialize;
 
