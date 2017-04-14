@@ -27,7 +27,7 @@ pub enum HttpMethod {
 pub type HttpErrorString = String;
 pub struct HttpResponse {
     pub code: Option<u32>,
-    data: Result<String, HttpErrorString>,
+    pub data: Result<String, HttpErrorString>,
 }
 
 impl HttpResponse {
@@ -142,6 +142,8 @@ pub fn http(url: &str, query: &str, body: &str,
         Ok(x) => { Ok(x) }
         Err(x) => { Err(x.utf8_error().description().to_string()) }
     };
+    #[cfg(feature = "verbose_http")]
+    println!("HTTP response: {}", result.clone().unwrap());
     HttpResponse {code: response, data: result }
 }
 

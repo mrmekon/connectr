@@ -16,6 +16,9 @@ debug-assertions = false
 codegen-units = 1
 panic = 'unwind'
 
+[features]
+verbose_http = []
+
 [dependencies]
 curl = "0.4.6"
 open = "1.2.0"
@@ -28,5 +31,14 @@ timer = "0.1.6"
 chrono = "0.3.0"
 
 [target."cfg(windows)".dependencies]
+
 [target."cfg(all(unix, not(target_os = \"macos\")))".dependencies]
-[target."cfg(macos)".dependencies]
+
+[target."cfg(target_os = \"macos\")".dependencies]
+cocoa = "0.8.1"
+objc-foundation = "0.1.1"
+objc_id = "0.1"
+
+[target."cfg(target_os = \"macos\")".dependencies.objc]
+version = "0.2.2"
+features = ["exception"]
