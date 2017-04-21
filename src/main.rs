@@ -39,6 +39,7 @@ struct MenuItems {
     next: MenuItem,
     prev: MenuItem,
     preset: Vec<MenuItem>,
+    volume: Vec<MenuItem>,
 }
 struct ConnectrApp {
     menu: MenuItems,
@@ -59,6 +60,7 @@ fn main() {
             next: ptr::null_mut(),
             prev: ptr::null_mut(),
             preset: Vec::<MenuItem>::new(),
+            volume: Vec::<MenuItem>::new(),
         }
     };
     let (tx,rx) = channel::<String>();
@@ -69,26 +71,6 @@ fn main() {
 
     let device_list = spotify.request_device_list();
 
-    status.add_label("Devices:");
-    status.add_separator();
-
-    println!("Visible Devices:");
-    for dev in device_list {
-        println!("{}", dev);
-        let id = dev.id.clone();
-        let cb: osx::NSCallback = Box::new(move |sender, tx| {
-            let cmd = MenuCallbackCommand {
-                action: CallbackAction::SelectDevice,
-                sender: sender,
-                data: id.to_owned(),
-            };
-            let _ = tx.send(json::encode(&cmd).unwrap());
-        });
-        let item = status.add_item(&dev.name, cb, dev.is_active);
-        app.menu.device.push((item, dev.id.clone()));
-    }
-    println!("");
-
     let player_state = spotify.request_player_state();
     println!("Playback State:\n{}", player_state);
     let play_str = format!("{: ^50}\n{: ^50}\n{: ^50}",
@@ -96,6 +78,17 @@ fn main() {
                            &player_state.item.artists[0].name,
                            &player_state.item.album.name);
     status.set_tooltip(&play_str);
+
+    status.add_label("Now Playing:");
+    status.add_separator();
+    //status.add_label(&player_state.item.name);
+    status.add_label(&format!("{:<50}", &player_state.item.name));
+    status.add_label(&format!("{:<50}", &player_state.item.artists[0].name));
+    status.add_label(&format!("{:<50}", &player_state.item.album.name));
+    let ms = player_state.item.duration_ms;
+    let min = ms / 1000 / 60;
+    let sec = (ms - (min * 60 * 1000)) / 1000;
+    status.add_label(&format!("{:<50}", format!("{}:{:02}", min, sec)));
 
     status.add_label("");
     status.add_label("Actions:");
@@ -156,6 +149,35 @@ fn main() {
     }
 
     status.add_label("");
+    status.add_label("Devices:");
+    status.add_separator();
+    println!("Visible Devices:");
+    let mut cur_volume: u32 = 0;
+    for dev in device_list {
+        println!("{}", dev);
+        let id = dev.id.clone();
+        let cb: osx::NSCallback = Box::new(move |sender, tx| {
+            let cmd = MenuCallbackCommand {
+                action: CallbackAction::SelectDevice,
+                sender: sender,
+                data: id.to_owned(),
+            };
+            let _ = tx.send(json::encode(&cmd).unwrap());
+        });
+        let item = status.add_item(&dev.name, cb, dev.is_active);
+        if dev.is_active {
+            cur_volume = match dev.volume_percent {
+                Some(v) => {
+                    (v as f32 / 10.0).round() as u32 * 10
+                },
+                None => 100,
+            }
+        }
+        app.menu.device.push((item, dev.id.clone()));
+    }
+    println!("");
+
+    status.add_label("");
     status.add_label("Volume:");
     status.add_separator();
     {
@@ -170,7 +192,8 @@ fn main() {
                 };
                 let _ = tx.send(json::encode(&cmd).unwrap());
             });
-            app.menu.play = status.add_item(&vol_str, cb, false);
+            let item = status.add_item(&vol_str, cb, i == cur_volume);
+            app.menu.volume.push(item);
             i += 10;
         }
     }
@@ -212,6 +235,11 @@ fn main() {
                 CallbackAction::Volume => {
                     let vol = cmd.data.parse::<u32>().unwrap();
                     require(spotify.volume(vol));
+                    let volume = &app.menu.volume;
+                    for item in volume {
+                        status.unsel_item(*item as u64);
+                    }
+                    status.sel_item(cmd.sender);
                 }
             }
         }

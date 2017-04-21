@@ -373,10 +373,16 @@ impl SpotifyConnectr {
         }
         self.refresh_timer_channel = None;
         let (access_token, expires_in) = self.refresh_oauth_tokens();
-        self.access_token = Some(access_token);
+        self.access_token = Some(access_token.clone());
         self.expire_utc = Some(self.expire_offset_to_utc(expires_in));
         println!("Refreshed credentials.");
         let _ = self.schedule_token_refresh();
+
+        let access_token = self.access_token.clone().unwrap();
+        let refresh_token = self.refresh_token.clone().unwrap();
+        let _ = settings::save_tokens(&access_token,
+                                      &refresh_token,
+                                      self.expire_utc.unwrap());
     }
     pub fn connect(&mut self) {
         if self.access_token.is_some() && !self.is_token_expired() {
