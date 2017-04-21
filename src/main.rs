@@ -13,6 +13,9 @@ use rustc_serialize::json;
 enum CallbackAction {
     SelectDevice,
     PlayPause,
+    SkipNext,
+    SkipPrev,
+    Volume,
     Preset,
 }
 
@@ -31,19 +34,30 @@ use connectr::osx::TStatusBar;
 use connectr::osx::MenuItem;
 
 struct MenuItems {
-    device: Vec<MenuItem>,
+    device: Vec<(MenuItem, String)>,
     play: MenuItem,
+    next: MenuItem,
+    prev: MenuItem,
     preset: Vec<MenuItem>,
 }
 struct ConnectrApp {
     menu: MenuItems,
 }
 
+fn play_action_label(is_playing: bool) -> &'static str {
+    match is_playing {
+        true => "Pause",
+        false => "Play",
+    }
+}
+
 fn main() {
     let mut app = ConnectrApp {
         menu: MenuItems {
-            device: Vec::<MenuItem>::new(),
+            device: Vec::<(MenuItem, String)>::new(),
             play: ptr::null_mut(),
+            next: ptr::null_mut(),
+            prev: ptr::null_mut(),
             preset: Vec::<MenuItem>::new(),
         }
     };
@@ -55,7 +69,7 @@ fn main() {
 
     let device_list = spotify.request_device_list();
 
-    status.add_label("DEVICES:");
+    status.add_label("Devices:");
     status.add_separator();
 
     println!("Visible Devices:");
@@ -71,7 +85,7 @@ fn main() {
             let _ = tx.send(json::encode(&cmd).unwrap());
         });
         let item = status.add_item(&dev.name, cb, dev.is_active);
-        app.menu.device.push(item);
+        app.menu.device.push((item, dev.id.clone()));
     }
     println!("");
 
@@ -84,13 +98,10 @@ fn main() {
     status.set_tooltip(&play_str);
 
     status.add_label("");
-    status.add_label("ACTIONS:");
+    status.add_label("Actions:");
     status.add_separator();
     {
-        let play_str = match player_state.is_playing {
-            true => "PAUSE",
-            false => "PLAY",
-        };
+        let play_str = play_action_label(player_state.is_playing);
         let cb: osx::NSCallback = Box::new(move |sender, tx| {
             let is_playing = &player_state.is_playing;
             let cmd = MenuCallbackCommand {
@@ -101,14 +112,36 @@ fn main() {
             let _ = tx.send(json::encode(&cmd).unwrap());
         });
         app.menu.play = status.add_item(&play_str, cb, false);
+
+        let cb: osx::NSCallback = Box::new(move |sender, tx| {
+            let cmd = MenuCallbackCommand {
+                action: CallbackAction::SkipNext,
+                sender: sender,
+                data: String::new(),
+            };
+            let _ = tx.send(json::encode(&cmd).unwrap());
+        });
+        app.menu.next = status.add_item("Next", cb, false);
+
+        let cb: osx::NSCallback = Box::new(move |sender, tx| {
+            let cmd = MenuCallbackCommand {
+                action: CallbackAction::SkipPrev,
+                sender: sender,
+                data: String::new(),
+            };
+            let _ = tx.send(json::encode(&cmd).unwrap());
+        });
+        app.menu.prev = status.add_item("Previous", cb, false);
     }
 
     status.add_label("");
-    status.add_label("PRESETS:");
+    status.add_label("Presets:");
     status.add_separator();
     {
-        for uri in vec!["spotify:user:mrmekon:playlist:4c8eKK6kKrcdt1HToEX7Jc",
-                        "spotify:user:spotify:playlist:37i9dQZEVXcOmDhsenkuCu"] {
+        let presets = spotify.get_presets();
+        for preset in presets {
+            let ref name = preset.0;
+            let uri = preset.1.clone();
             let cb: osx::NSCallback = Box::new(move |sender, tx| {
                 let cmd = MenuCallbackCommand {
                     action: CallbackAction::Preset,
@@ -117,8 +150,28 @@ fn main() {
                 };
                 let _ = tx.send(json::encode(&cmd).unwrap());
             });
-            let item = status.add_item(uri, cb, false);
+            let item = status.add_item(&name.clone(), cb, false);
             app.menu.preset.push(item);
+        }
+    }
+
+    status.add_label("");
+    status.add_label("Volume:");
+    status.add_separator();
+    {
+        let mut i = 0;
+        while i <= 100 {
+            let vol_str = format!("{}%", i);
+            let cb: osx::NSCallback = Box::new(move |sender, tx| {
+                let cmd = MenuCallbackCommand {
+                    action: CallbackAction::Volume,
+                    sender: sender,
+                    data: i.to_string(),
+                };
+                let _ = tx.send(json::encode(&cmd).unwrap());
+            });
+            app.menu.play = status.add_item(&vol_str, cb, false);
+            i += 10;
         }
     }
 
@@ -130,7 +183,8 @@ fn main() {
             match cmd.action {
                 CallbackAction::SelectDevice => {
                     let device = &app.menu.device;
-                    for item in device {
+                    for dev in device {
+                        let &(ref item, _) = dev;
                         status.unsel_item(*item as u64);
                     }
                     status.sel_item(cmd.sender);
@@ -143,15 +197,21 @@ fn main() {
                         true => {require(spotify.pause());},
                         false => {require(spotify.play(None));},
                     }
-                    //let player_state = spotify.request_player_state();
-                    let play_str = match player_state.is_playing {
-                        false => "PAUSE",
-                        true => "PLAY",
-                    };
+                    let play_str = play_action_label(!player_state.is_playing);
                     status.update_item(app.menu.play, play_str);
                 },
                 CallbackAction::Preset => {
                     play_uri(&mut spotify, None, Some(&cmd.data));
+                }
+                CallbackAction::SkipNext => {
+                    require(spotify.next());
+                }
+                CallbackAction::SkipPrev => {
+                    require(spotify.previous());
+                }
+                CallbackAction::Volume => {
+                    let vol = cmd.data.parse::<u32>().unwrap();
+                    require(spotify.volume(vol));
                 }
             }
         }

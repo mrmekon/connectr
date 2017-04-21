@@ -4,3 +4,6 @@ port = 5432
 [application]
 client_id = <SPOTIFY_CLIENT_ID>
 secret = <SPOTIFY_CLIENT_SECRET>
+
+[presets]
+# Playlist Name = spotify:playlist:uri

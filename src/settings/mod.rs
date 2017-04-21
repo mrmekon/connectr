@@ -10,6 +10,7 @@ pub struct Settings {
     pub access_token: Option<String>,
     pub refresh_token: Option<String>,
     pub expire_utc: Option<u64>,
+    pub presets: Vec<(String,String)>,
 }
 
 pub fn read_settings() -> Option<Settings> {
@@ -44,8 +45,16 @@ pub fn read_settings() -> Option<Settings> {
         println!("Read access token from INI!");
     }
 
+    let mut presets = Vec::<(String,String)>::new();
+    if let Some(section) = conf.section(Some("presets".to_owned())) {
+        for (key, value) in section {
+            presets.push((key.to_owned(), value.to_owned()));
+        }
+    }
+
     Some(Settings { secret: secret.to_string(), client_id: client_id.to_string(), port: port,
-                    access_token: access, refresh_token: refresh, expire_utc: expire_utc})
+                    access_token: access, refresh_token: refresh, expire_utc: expire_utc,
+                    presets: presets})
 }
 
 pub type SettingsError = String;

@@ -490,4 +490,7 @@ impl SpotifyConnectr {
         self.set_target_device(Some(device));
         http::http(spotify_api::PLAYER, "", &body, http::HttpMethod::PUT, self.bearer_token())
     }
+    pub fn get_presets(&mut self) -> &Vec<(String,String)> {
+        &self.settings.presets
+    }
 }
