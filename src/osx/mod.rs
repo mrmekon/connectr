@@ -3,6 +3,7 @@ pub mod rustnsobject;
 extern crate objc;
 extern crate objc_foundation;
 extern crate cocoa;
+extern crate libc;
 
 pub use self::rustnsobject::NSCallback;
 
@@ -25,6 +26,8 @@ use self::rustnsobject::{NSObj, NSObjTrait, NSObjCallbackTrait};
 
 use std::sync::mpsc::Sender;
 
+use std::ptr;
+use std::ffi::CStr;
 use std::thread::sleep;
 use std::time::Duration;
 
@@ -46,6 +49,7 @@ pub trait TStatusBar {
     fn add_separator(&mut self);
     fn add_label(&mut self, label: &str);
     fn add_item(&mut self, item: &str, callback: NSCallback, selected: bool) -> *mut Object;
+    fn add_quit(&mut self, label: &str);
     fn update_item(&mut self, item: *mut Object, label: &str);
     fn sel_item(&mut self, sender: u64);
     fn unsel_item(&mut self, sender: u64);
@@ -70,8 +74,14 @@ impl TStatusBar for OSXStatusBar {
             };
             bar.app.setActivationPolicy_(NSApplicationActivationPolicyAccessory);
             msg_send![bar.status_bar_item, setHighlightMode:YES];
-            let img = NSString::alloc(nil).init_str("spotify.png");
+            let img_path = match bundled_resource_path("spotify", "png") {
+                Some(path) => path,
+                None => "spotify.png".to_string(),
+            };
+            let img = NSString::alloc(nil).init_str(&img_path);
             let icon = NSImage::alloc(nil).initWithContentsOfFile_(img);
+            //let icon = NSImage::alloc(nil).initWithContentsOfFile_(img);
+            //let icon = NSImage::imageNamed_(img, img);
             NSButton::setTitle_(bar.status_bar_item, NSString::alloc(nil).init_str("connectr"));
             bar.status_bar_item.button().setImage_(icon);
             bar.status_bar_item.setMenu_(bar.menu_bar);
@@ -102,6 +112,16 @@ impl TStatusBar for OSXStatusBar {
             let quit_key = NSString::alloc(nil).init_str("");
             let app_menu_item = NSMenuItem::alloc(nil)
                 .initWithTitle_action_keyEquivalent_(txt, self.object.selector(), quit_key)
+                .autorelease();
+            self.menu_bar.addItem_(app_menu_item);
+        }
+    }
+    fn add_quit(&mut self, label: &str) {
+        unsafe {
+            let txt = NSString::alloc(nil).init_str(label);
+            let quit_key = NSString::alloc(nil).init_str("");
+            let app_menu_item = NSMenuItem::alloc(nil)
+                .initWithTitle_action_keyEquivalent_(txt, sel!(terminate:), quit_key)
                 .autorelease();
             self.menu_bar.addItem_(app_menu_item);
         }
@@ -169,5 +189,34 @@ impl TStatusBar for OSXStatusBar {
             }
             if !block { break; }
         }
+    }
+}
+
+pub fn osx_alert(text: &str) {
+    unsafe {
+        let ns_text = NSString::alloc(nil).init_str(text);
+        let button = NSString::alloc(nil).init_str("ok");
+        let cls = Class::get("NSAlert").unwrap();
+        let alert: *mut Object = msg_send![cls, alloc];
+        let _ = msg_send![alert, init];
+        let _ = msg_send![alert, setMessageText: ns_text];
+        let _ = msg_send![alert, addButtonWithTitle: button];
+        let _ = msg_send![alert, runModal];
+    }
+}
+
+pub fn bundled_resource_path(name: &str, extension: &str) -> Option<String> {
+    unsafe {
+        let cls = Class::get("NSBundle").unwrap();
+        let bundle: *mut Object = msg_send![cls, mainBundle];
+        let res = NSString::alloc(nil).init_str(name);
+        let ext = NSString::alloc(nil).init_str(extension);
+        let ini: *mut Object = msg_send![bundle, pathForResource:res ofType:ext];
+        let cstr: *const libc::c_char = msg_send![ini, UTF8String];
+        if cstr != ptr::null() {
+            let rstr = CStr::from_ptr(cstr).to_string_lossy().into_owned();
+            return Some(rstr);
+        }
+        None
     }
 }

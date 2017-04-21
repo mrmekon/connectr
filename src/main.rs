@@ -56,8 +56,8 @@ fn play_action_label(is_playing: bool) -> &'static str {
 
 fn fill_menu<T: TStatusBar>(app: &mut ConnectrApp, spotify: &mut connectr::SpotifyConnectr, status: &mut T) {
     let device_list = spotify.request_device_list();
-
     let player_state = spotify.request_player_state();
+
     println!("Playback State:\n{}", player_state);
     let play_str = format!("{: ^50}\n{: ^50}\n{: ^50}",
                            &player_state.item.name,
@@ -183,6 +183,8 @@ fn fill_menu<T: TStatusBar>(app: &mut ConnectrApp, spotify: &mut connectr::Spoti
             i += 10;
         }
     }
+    status.add_separator();
+    status.add_quit("Exit");
 }
 
 fn clear_menu<T: TStatusBar>(app: &mut ConnectrApp, _: &mut connectr::SpotifyConnectr, status: &mut T) {

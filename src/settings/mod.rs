@@ -3,6 +3,15 @@ use self::ini::Ini;
 
 extern crate time;
 
+#[cfg(target_os = "macos")]
+use super::osx;
+
+use std::env;
+use std::fs;
+use std::path;
+
+const INIFILE: &'static str = ".connectr.ini";
+
 pub struct Settings {
     pub port: u32,
     pub secret: String,
@@ -13,8 +22,50 @@ pub struct Settings {
     pub presets: Vec<(String,String)>,
 }
 
+#[cfg(target_os = "macos")]
+fn bundled_ini() -> String {
+    match osx::bundled_resource_path("connectr", "ini") {
+        Some(path) => path,
+        None => String::new(),
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+fn bundled_ini() -> String {
+    String::new()
+}
+
+fn inifile() -> String {
+    // Try to load INI file from home directory
+    let path = format!("{}/{}", env::home_dir().unwrap().display(), INIFILE);
+    if path::Path::new(&path).exists() {
+        return path
+    }
+
+    // If it doesn't exist, try to copy the template from the app bundle, if
+    // such a thing exists.
+    let bundle_ini = bundled_ini();
+    if path::Path::new(&bundle_ini).exists() {
+        let _ = fs::copy(bundle_ini, path.clone());
+    }
+    path
+}
+
 pub fn read_settings() -> Option<Settings> {
-    let conf = Ini::load_from_file("connectr.ini").unwrap();
+    let conf = match Ini::load_from_file(&inifile()) {
+        Ok(c) => c,
+        Err(_) => {
+            // No connectr.ini found.  Generate a junk one in-memory, which
+            // will fail shortly after with the nice error message.
+            let mut c = Ini::new();
+            c.with_section(Some("connectr".to_owned()))
+                .set("port", 5657.to_string());
+            c.with_section(Some("application".to_owned()))
+                .set("secret", "<PLACEHOLDER>".to_string())
+                .set("client_id", "<PLACEHOLDER>".to_string());
+            c
+        }
+    };
 
     let section = conf.section(Some("connectr".to_owned())).unwrap();
     let port = section.get("port").unwrap().parse().unwrap();
@@ -59,11 +110,11 @@ pub fn read_settings() -> Option<Settings> {
 
 pub type SettingsError = String;
 pub fn save_tokens(access: &str, refresh: &str, expire_utc: u64) -> Result<(), SettingsError> {
-    let mut conf = Ini::load_from_file("connectr.ini").unwrap();
+    let mut conf = Ini::load_from_file(&inifile()).unwrap();
     conf.with_section(Some("tokens".to_owned()))
         .set("access", access)
         .set("refresh", refresh)
         .set("expire", expire_utc.to_string());
-    conf.write_to_file("connectr.ini").unwrap();
+    conf.write_to_file(&inifile()).unwrap();
     Ok(())
 }

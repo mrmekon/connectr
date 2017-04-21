@@ -1,10 +1,18 @@
 [package]
 name = "connectr"
-version = "0.0.1"
+version = "0.0.2"
 authors = [ "Trevor Bentley <trevor@trevorbentley.com>" ]
+
+description = "Spotify Connect library and systray/menubar application for controlling Spotify devices."
+keywords = ["spotify", "connect", "spotify connect", "webapi", "systray", "menubar"]
+homepage = "https://github.com/mrmekon/connectr"
+repository = "https://github.com/mrmekon/connectr"
+license = "Apache-2.0"
+
 build = "build.rs"
 
 [lib]
+name = "connectr"
 crate-type = ["rlib", "dylib"]
 
 [profile.release]
@@ -29,6 +37,7 @@ rust-ini = "0.9"
 time = "0.1"
 timer = "0.1.6"
 chrono = "0.3.0"
+libc = "0.2"
 
 [target."cfg(windows)".dependencies]
 
