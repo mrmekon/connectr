@@ -42,6 +42,7 @@ pub struct OSXStatusBar {
 pub trait TStatusBar {
     type S: TStatusBar;
     fn new(tx: Sender<String>) -> Self::S;
+    fn clear_items(&mut self);
     fn add_separator(&mut self);
     fn add_label(&mut self, label: &str);
     fn add_item(&mut self, item: &str, callback: NSCallback, selected: bool) -> *mut Object;
@@ -82,6 +83,12 @@ impl TStatusBar for OSXStatusBar {
             ));
         }
         bar
+    }
+    fn clear_items(&mut self) {
+        unsafe {
+            self.menu_bar = NSMenu::new(nil).autorelease();
+            self.status_bar_item.setMenu_(self.menu_bar);
+        }
     }
     fn set_tooltip(&self, text: &str) {
         unsafe {

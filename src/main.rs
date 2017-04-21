@@ -6,6 +6,8 @@ use std::thread::sleep;
 use std::time::Duration;
 use std::sync::mpsc::channel;
 
+extern crate time;
+
 extern crate rustc_serialize;
 use rustc_serialize::json;
 
@@ -52,23 +54,7 @@ fn play_action_label(is_playing: bool) -> &'static str {
     }
 }
 
-fn main() {
-    let mut app = ConnectrApp {
-        menu: MenuItems {
-            device: Vec::<(MenuItem, String)>::new(),
-            play: ptr::null_mut(),
-            next: ptr::null_mut(),
-            prev: ptr::null_mut(),
-            preset: Vec::<MenuItem>::new(),
-            volume: Vec::<MenuItem>::new(),
-        }
-    };
-    let (tx,rx) = channel::<String>();
-    let mut spotify = connectr::SpotifyConnectr::new();
-    spotify.connect();
-    spotify.set_target_device(None);
-    let mut status = osx::OSXStatusBar::new(tx);
-
+fn fill_menu<T: TStatusBar>(app: &mut ConnectrApp, spotify: &mut connectr::SpotifyConnectr, status: &mut T) {
     let device_list = spotify.request_device_list();
 
     let player_state = spotify.request_player_state();
@@ -197,8 +183,48 @@ fn main() {
             i += 10;
         }
     }
+}
+
+fn clear_menu<T: TStatusBar>(app: &mut ConnectrApp, _: &mut connectr::SpotifyConnectr, status: &mut T) {
+    app.menu = MenuItems {
+        device: Vec::<(MenuItem, String)>::new(),
+        play: ptr::null_mut(),
+        next: ptr::null_mut(),
+        prev: ptr::null_mut(),
+        preset: Vec::<MenuItem>::new(),
+        volume: Vec::<MenuItem>::new(),
+    };
+    status.clear_items();
+}
+
+fn main() {
+    let mut app = ConnectrApp {
+        menu: MenuItems {
+            device: Vec::<(MenuItem, String)>::new(),
+            play: ptr::null_mut(),
+            next: ptr::null_mut(),
+            prev: ptr::null_mut(),
+            preset: Vec::<MenuItem>::new(),
+            volume: Vec::<MenuItem>::new(),
+        }
+    };
+    let mut refresh_time_utc = 0;
+    let (tx,rx) = channel::<String>();
+    let mut spotify = connectr::SpotifyConnectr::new();
+    spotify.connect();
+    spotify.set_target_device(None);
+    let mut status = osx::OSXStatusBar::new(tx);
 
     loop {
+        let now = time::now_utc().to_timespec().sec as i64;
+        if now > refresh_time_utc {
+            // Redraw the whole menu once every 60 seconds, or sooner if a
+            // command is processed later.
+            clear_menu(&mut app, &mut spotify, &mut status);
+            fill_menu(&mut app, &mut spotify, &mut status);
+            refresh_time_utc = now + 30;
+        }
+
         spotify.await_once(false);
         if let Ok(s) = rx.try_recv() {
             println!("Received {}", s);
@@ -242,6 +268,7 @@ fn main() {
                     status.sel_item(cmd.sender);
                 }
             }
+            refresh_time_utc = now + 1;
         }
         status.run(false);
         sleep(Duration::from_millis(10));
@@ -275,14 +302,3 @@ fn play_uri(spotify: &mut connectr::SpotifyConnectr, device: Option<&str>, uri: 
         }
     };
 }
-
-//    spotify.set_target_device(None);
-//    require(spotify.pause());
-//    require(spotify.next());
-//    require(spotify.previous());
-//    require(spotify.seek(5000));
-//    require(spotify.volume(10));
-//    require(spotify.shuffle(true));
-//    require(spotify.repeat(connectr::SpotifyRepeat::Context));
-//    require(spotify.transfer_multi(vec!["1a793f2a23989a1c35d05b2fd1ff00e9a67e7134".to_string()], false));
-//    require(spotify.transfer("1a793f2a23989a1c35d05b2fd1ff00e9a67e7134".to_string(), false));
