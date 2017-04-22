@@ -288,7 +288,14 @@ fn refresh_time(app: &mut ConnectrApp, now: i64) -> i64 {
             match state.is_playing {
                 true => {
                     let track_end = match state.progress_ms {
-                        Some(prog) => state.item.duration_ms - prog,
+                        Some(prog) => {
+                            if prog < state.item.duration_ms {
+                                state.item.duration_ms - prog
+                            }
+                            else {
+                                0
+                            }
+                        },
                         None => state.item.duration_ms,
                     } as i64;
                     // Refresh 1 second after track ends
@@ -299,8 +306,9 @@ fn refresh_time(app: &mut ConnectrApp, now: i64) -> i64 {
         }
         None => REFRESH_PERIOD,
     };
+    let refresh_offset = std::cmp::min(REFRESH_PERIOD, refresh_offset) as i64;
     println!("State refresh in {} seconds.", refresh_offset);
-    now + std::cmp::min(REFRESH_PERIOD, refresh_offset) as i64
+    now + refresh_offset
 }
 
 fn main() {
