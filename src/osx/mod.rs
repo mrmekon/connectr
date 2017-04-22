@@ -5,9 +5,10 @@ extern crate objc_foundation;
 extern crate cocoa;
 extern crate libc;
 
-pub use self::rustnsobject::NSCallback;
+pub use ::TStatusBar;
+pub use ::NSCallback;
 
-use objc::runtime::{Class, Object};
+use objc::runtime::Class;
 
 use self::cocoa::base::{nil, YES};
 use self::cocoa::appkit::NSStatusBar;
@@ -34,27 +35,13 @@ use std::time::Duration;
 extern crate objc_id;
 use self::objc_id::Id;
 
-pub type MenuItem = *mut Object;
+pub type Object = objc::runtime::Object;
 
 pub struct OSXStatusBar {
     object: NSObj,
     app: *mut objc::runtime::Object,
     status_bar_item: *mut objc::runtime::Object,
     menu_bar: *mut objc::runtime::Object,
-}
-pub trait TStatusBar {
-    type S: TStatusBar;
-    fn new(tx: Sender<String>) -> Self::S;
-    fn clear_items(&mut self);
-    fn add_separator(&mut self);
-    fn add_label(&mut self, label: &str);
-    fn add_item(&mut self, item: &str, callback: NSCallback, selected: bool) -> *mut Object;
-    fn add_quit(&mut self, label: &str);
-    fn update_item(&mut self, item: *mut Object, label: &str);
-    fn sel_item(&mut self, sender: u64);
-    fn unsel_item(&mut self, sender: u64);
-    fn set_tooltip(&self, text: &str);
-    fn run(&mut self, block: bool);
 }
 
 impl TStatusBar for OSXStatusBar {

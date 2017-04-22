@@ -1,5 +1,8 @@
 extern crate connectr;
 use connectr::SpotifyResponse;
+use connectr::TStatusBar;
+use connectr::MenuItem;
+use connectr::NSCallback;
 
 #[macro_use]
 extern crate log;
@@ -35,10 +38,6 @@ struct MenuCallbackCommand {
 
 #[cfg(target_os = "macos")]
 use connectr::osx;
-#[cfg(target_os = "macos")]
-use connectr::osx::TStatusBar;
-#[cfg(target_os = "macos")]
-use connectr::osx::MenuItem;
 
 struct MenuItems {
     device: Vec<(MenuItem, String)>,
@@ -86,7 +85,7 @@ fn fill_menu<T: TStatusBar>(app: &mut ConnectrApp, spotify: &mut connectr::Spoti
     status.add_separator();
     {
         let play_str = play_action_label(player_state.is_playing);
-        let cb: osx::NSCallback = Box::new(move |sender, tx| {
+        let cb: NSCallback = Box::new(move |sender, tx| {
             let is_playing = &player_state.is_playing;
             let cmd = MenuCallbackCommand {
                 action: CallbackAction::PlayPause,
@@ -97,7 +96,7 @@ fn fill_menu<T: TStatusBar>(app: &mut ConnectrApp, spotify: &mut connectr::Spoti
         });
         app.menu.play = status.add_item(&play_str, cb, false);
 
-        let cb: osx::NSCallback = Box::new(move |sender, tx| {
+        let cb: NSCallback = Box::new(move |sender, tx| {
             let cmd = MenuCallbackCommand {
                 action: CallbackAction::SkipNext,
                 sender: sender,
@@ -107,7 +106,7 @@ fn fill_menu<T: TStatusBar>(app: &mut ConnectrApp, spotify: &mut connectr::Spoti
         });
         app.menu.next = status.add_item("Next", cb, false);
 
-        let cb: osx::NSCallback = Box::new(move |sender, tx| {
+        let cb: NSCallback = Box::new(move |sender, tx| {
             let cmd = MenuCallbackCommand {
                 action: CallbackAction::SkipPrev,
                 sender: sender,
@@ -126,7 +125,7 @@ fn fill_menu<T: TStatusBar>(app: &mut ConnectrApp, spotify: &mut connectr::Spoti
         for preset in presets {
             let ref name = preset.0;
             let uri = preset.1.clone();
-            let cb: osx::NSCallback = Box::new(move |sender, tx| {
+            let cb: NSCallback = Box::new(move |sender, tx| {
                 let cmd = MenuCallbackCommand {
                     action: CallbackAction::Preset,
                     sender: sender,
@@ -147,7 +146,7 @@ fn fill_menu<T: TStatusBar>(app: &mut ConnectrApp, spotify: &mut connectr::Spoti
     for dev in device_list {
         println!("{}", dev);
         let id = dev.id.clone();
-        let cb: osx::NSCallback = Box::new(move |sender, tx| {
+        let cb: NSCallback = Box::new(move |sender, tx| {
             let cmd = MenuCallbackCommand {
                 action: CallbackAction::SelectDevice,
                 sender: sender,
@@ -175,7 +174,7 @@ fn fill_menu<T: TStatusBar>(app: &mut ConnectrApp, spotify: &mut connectr::Spoti
         let mut i = 0;
         while i <= 100 {
             let vol_str = format!("{}%", i);
-            let cb: osx::NSCallback = Box::new(move |sender, tx| {
+            let cb: NSCallback = Box::new(move |sender, tx| {
                 let cmd = MenuCallbackCommand {
                     action: CallbackAction::Volume,
                     sender: sender,
@@ -253,8 +252,11 @@ fn main() {
     spotify.connect();
     info!("Created Spotify connection.");
     spotify.set_target_device(None);
+    #[cfg(target_os = "macos")]
     let mut status = osx::OSXStatusBar::new(tx);
     info!("Created status bar.");
+    #[cfg(not(target_os = "macos"))]
+    let mut status = connectr::DummyStatusBar::new(tx);
 
     loop {
         let now = time::now_utc().to_timespec().sec as i64;

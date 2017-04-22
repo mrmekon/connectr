@@ -6,6 +6,8 @@ extern crate objc;
 extern crate objc_foundation;
 extern crate objc_id;
 
+pub use ::NSCallback;
+
 use std::sync::{Once, ONCE_INIT};
 
 use objc::Message;
@@ -89,7 +91,6 @@ impl NSObjTrait for NSObj {
 }
 
 pub type NSObjCallback<T> = Box<Fn(&mut T, u64)>;
-pub type NSCallback = Box<Fn(u64, &Sender<String>)>;
 
 impl NSObjCallbackTrait for NSObj {
     fn set_value(&mut self, key: u64, val: NSCallback) {
