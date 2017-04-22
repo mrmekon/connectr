@@ -1,6 +1,6 @@
 # connectr
 
-connectr is a Rust library and systray/menubar application for controlling and monitoring Spotify Connect devices.
+connectr is a Rust library and systray/menubar application for controlling and monitoring [Spotify Connect](https://www.spotify.com/se/connect/) devices.
 
 As a library, connectr exposes the official [Spotify 'Player' Web API](https://developer.spotify.com/web-api/web-api-connect-endpoint-reference/) for controlling Spotify Connect devices.
 
