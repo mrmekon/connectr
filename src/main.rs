@@ -1,6 +1,11 @@
 extern crate connectr;
 use connectr::SpotifyResponse;
 
+#[macro_use]
+extern crate log;
+extern crate log4rs;
+
+use std::env;
 use std::ptr;
 use std::thread::sleep;
 use std::time::Duration;
@@ -199,7 +204,38 @@ fn clear_menu<T: TStatusBar>(app: &mut ConnectrApp, _: &mut connectr::SpotifyCon
     status.clear_items();
 }
 
+fn create_logger() {
+    use log::LogLevelFilter;
+    use log4rs::append::console::ConsoleAppender;
+    use log4rs::append::file::FileAppender;
+    use log4rs::encode::pattern::PatternEncoder;
+    use log4rs::config::{Appender, Config, Logger, Root};
+
+    let log_path = format!("{}/{}", env::home_dir().unwrap().display(), ".connectr.log");
+    let stdout = ConsoleAppender::builder()
+        .encoder(Box::new(PatternEncoder::new("{m}{n}")))
+        .build();
+    let requests = FileAppender::builder()
+        .build(&log_path)
+        .unwrap();
+
+    let config = Config::builder()
+        .appender(Appender::builder().build("stdout", Box::new(stdout)))
+        .appender(Appender::builder().build("requests", Box::new(requests)))
+        .logger(Logger::builder().build("app::backend::db", LogLevelFilter::Info))
+        .logger(Logger::builder()
+            .appender("requests")
+            .additive(false)
+            .build("app::requests", LogLevelFilter::Info))
+        .build(Root::builder().appender("stdout").appender("requests").build(LogLevelFilter::Info))
+        .unwrap();
+    let _ = log4rs::init_config(config).unwrap();
+}
+
 fn main() {
+    create_logger();
+    info!("Started Connectr");
+
     let mut app = ConnectrApp {
         menu: MenuItems {
             device: Vec::<(MenuItem, String)>::new(),
@@ -213,9 +249,12 @@ fn main() {
     let mut refresh_time_utc = 0;
     let (tx,rx) = channel::<String>();
     let mut spotify = connectr::SpotifyConnectr::new();
+    info!("Created Spotify controller.");
     spotify.connect();
+    info!("Created Spotify connection.");
     spotify.set_target_device(None);
     let mut status = osx::OSXStatusBar::new(tx);
+    info!("Created status bar.");
 
     loop {
         let now = time::now_utc().to_timespec().sec as i64;
@@ -225,12 +264,14 @@ fn main() {
             clear_menu(&mut app, &mut spotify, &mut status);
             fill_menu(&mut app, &mut spotify, &mut status);
             refresh_time_utc = now + 30;
+            info!("Refreshed Spotify state.");
         }
 
         spotify.await_once(false);
         if let Ok(s) = rx.try_recv() {
             println!("Received {}", s);
             let cmd: MenuCallbackCommand = json::decode(&s).unwrap();
+            info!("Executed action: {:?}", cmd.action);
             match cmd.action {
                 CallbackAction::SelectDevice => {
                     let device = &app.menu.device;

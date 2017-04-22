@@ -39,6 +39,7 @@ fn inifile() -> String {
     // Try to load INI file from home directory
     let path = format!("{}/{}", env::home_dir().unwrap().display(), INIFILE);
     if path::Path::new(&path).exists() {
+        info!("Found config: {}", path);
         return path
     }
 
@@ -46,18 +47,21 @@ fn inifile() -> String {
     // such a thing exists.
     let bundle_ini = bundled_ini();
     if path::Path::new(&bundle_ini).exists() {
+        info!("Copied config: {}", bundle_ini);
         let _ = fs::copy(bundle_ini, path.clone());
     }
     path
 }
 
 pub fn read_settings() -> Option<Settings> {
+    info!("Attempting to read config file.");
     let conf = match Ini::load_from_file(&inifile()) {
         Ok(c) => c,
         Err(_) => {
             // No connectr.ini found.  Generate a junk one in-memory, which
             // will fail shortly after with the nice error message.
             let mut c = Ini::new();
+            info!("No config file found.");
             c.with_section(Some("connectr".to_owned()))
                 .set("port", 5657.to_string());
             c.with_section(Some("application".to_owned()))
@@ -74,6 +78,7 @@ pub fn read_settings() -> Option<Settings> {
     let secret = section.get("secret").unwrap();
     let client_id = section.get("client_id").unwrap();
     if client_id.starts_with('<') || secret.starts_with('<') {
+        error!("No config file found.  Exiting.");
         println!("");
         println!("ERROR: Spotify Client ID or Secret not set in connectr.ini!");
         println!("");

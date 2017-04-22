@@ -5,6 +5,9 @@ pub mod webapi;
 // Re-export webapi interface to connectr root
 pub use webapi::*;
 
+#[macro_use]
+extern crate log;
+
 #[cfg(target_os = "macos")]
 pub mod osx;
 
