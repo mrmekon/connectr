@@ -1,0 +1,5 @@
+# Lower minimum OS X version on Darwin builds
+[target.x86_64-apple-darwin]
+rustflags = ["-Clink-args=-mmacosx-version-min=10.7"]
+[target.i686-apple-darwin]
+rustflags = ["-Clink-args=-mmacosx-version-min=10.7"]
