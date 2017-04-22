@@ -19,6 +19,9 @@ extern crate time;
 extern crate rustc_serialize;
 use rustc_serialize::json;
 
+// How often to refresh Spotify state (if nothing triggers a refresh earlier).
+pub const REFRESH_PERIOD: i64 = 30;
+
 #[derive(RustcDecodable, RustcEncodable, Debug)]
 enum CallbackAction {
     SelectDevice,
@@ -49,6 +52,8 @@ struct MenuItems {
 }
 struct ConnectrApp {
     menu: MenuItems,
+    device_list: Option<connectr::ConnectDeviceList>,
+    player_state: Option<connectr::PlayerState>,
 }
 
 fn play_action_label(is_playing: bool) -> &'static str {
@@ -59,8 +64,10 @@ fn play_action_label(is_playing: bool) -> &'static str {
 }
 
 fn fill_menu<T: TStatusBar>(app: &mut ConnectrApp, spotify: &mut connectr::SpotifyConnectr, status: &mut T) {
-    let device_list = spotify.request_device_list();
-    let player_state = spotify.request_player_state();
+    app.device_list = Some(spotify.request_device_list());
+    app.player_state = Some(spotify.request_player_state());
+    let ref device_list = app.device_list.as_ref().unwrap();
+    let ref player_state = app.player_state.as_ref().unwrap();
 
     println!("Playback State:\n{}", player_state);
     let play_str = format!("{: ^50}\n{: ^50}\n{: ^50}",
@@ -85,8 +92,8 @@ fn fill_menu<T: TStatusBar>(app: &mut ConnectrApp, spotify: &mut connectr::Spoti
     status.add_separator();
     {
         let play_str = play_action_label(player_state.is_playing);
+        let is_playing = player_state.is_playing.clone();
         let cb: NSCallback = Box::new(move |sender, tx| {
-            let is_playing = &player_state.is_playing;
             let cmd = MenuCallbackCommand {
                 action: CallbackAction::PlayPause,
                 sender: sender,
@@ -143,7 +150,7 @@ fn fill_menu<T: TStatusBar>(app: &mut ConnectrApp, spotify: &mut connectr::Spoti
     status.add_separator();
     println!("Visible Devices:");
     let mut cur_volume: u32 = 0;
-    for dev in device_list {
+    for dev in *device_list {
         println!("{}", dev);
         let id = dev.id.clone();
         let cb: NSCallback = Box::new(move |sender, tx| {
@@ -231,6 +238,71 @@ fn create_logger() {
     let _ = log4rs::init_config(config).unwrap();
 }
 
+fn handle_callback<T: TStatusBar>(app: &mut ConnectrApp, spotify: &mut connectr::SpotifyConnectr,
+                   status: &mut T, cmd: &MenuCallbackCommand) {
+    info!("Executed action: {:?}", cmd.action);
+    match cmd.action {
+        CallbackAction::SelectDevice => {
+            let device = &app.menu.device;
+            for dev in device {
+                let &(ref item, _) = dev;
+                status.unsel_item(*item as u64);
+            }
+            status.sel_item(cmd.sender);
+            // Spotify is broken.  Must be 'true', always starts playing.
+            require(spotify.transfer(cmd.data.clone(), true));
+        },
+        CallbackAction::PlayPause => {
+            let player_state = spotify.request_player_state();
+            match player_state.is_playing {
+                true => {require(spotify.pause());},
+                false => {require(spotify.play(None));},
+            }
+            let play_str = play_action_label(!player_state.is_playing);
+            status.update_item(app.menu.play, play_str);
+        },
+        CallbackAction::Preset => {
+            play_uri(spotify, None, Some(&cmd.data));
+        }
+        CallbackAction::SkipNext => {
+            require(spotify.next());
+        }
+        CallbackAction::SkipPrev => {
+            require(spotify.previous());
+        }
+        CallbackAction::Volume => {
+            let vol = cmd.data.parse::<u32>().unwrap();
+            require(spotify.volume(vol));
+            let volume = &app.menu.volume;
+            for item in volume {
+                status.unsel_item(*item as u64);
+            }
+            status.sel_item(cmd.sender);
+        }
+    }
+}
+
+fn refresh_time(app: &mut ConnectrApp, now: i64) -> i64 {
+    let refresh_offset = match app.player_state.as_ref() {
+        Some(ref state) => {
+            match state.is_playing {
+                true => {
+                    let track_end = match state.progress_ms {
+                        Some(prog) => state.item.duration_ms - prog,
+                        None => state.item.duration_ms,
+                    } as i64;
+                    // Refresh 1 second after track ends
+                    track_end/1000 + 1
+                },
+                false => REFRESH_PERIOD,
+            }
+        }
+        None => REFRESH_PERIOD,
+    };
+    println!("State refresh in {} seconds.", refresh_offset);
+    now + std::cmp::min(REFRESH_PERIOD, refresh_offset) as i64
+}
+
 fn main() {
     create_logger();
     info!("Started Connectr");
@@ -243,7 +315,9 @@ fn main() {
             prev: ptr::null_mut(),
             preset: Vec::<MenuItem>::new(),
             volume: Vec::<MenuItem>::new(),
-        }
+        },
+        device_list: None,
+        player_state: None,
     };
     let mut refresh_time_utc = 0;
     let (tx,rx) = channel::<String>();
@@ -265,7 +339,7 @@ fn main() {
             // command is processed later.
             clear_menu(&mut app, &mut spotify, &mut status);
             fill_menu(&mut app, &mut spotify, &mut status);
-            refresh_time_utc = now + 30;
+            refresh_time_utc = refresh_time(&mut app, now);
             info!("Refreshed Spotify state.");
         }
 
@@ -273,46 +347,7 @@ fn main() {
         if let Ok(s) = rx.try_recv() {
             println!("Received {}", s);
             let cmd: MenuCallbackCommand = json::decode(&s).unwrap();
-            info!("Executed action: {:?}", cmd.action);
-            match cmd.action {
-                CallbackAction::SelectDevice => {
-                    let device = &app.menu.device;
-                    for dev in device {
-                        let &(ref item, _) = dev;
-                        status.unsel_item(*item as u64);
-                    }
-                    status.sel_item(cmd.sender);
-                    // Spotify is broken.  Must be 'true', always starts playing.
-                    require(spotify.transfer(cmd.data, true));
-                },
-                CallbackAction::PlayPause => {
-                    let player_state = spotify.request_player_state();
-                    match player_state.is_playing {
-                        true => {require(spotify.pause());},
-                        false => {require(spotify.play(None));},
-                    }
-                    let play_str = play_action_label(!player_state.is_playing);
-                    status.update_item(app.menu.play, play_str);
-                },
-                CallbackAction::Preset => {
-                    play_uri(&mut spotify, None, Some(&cmd.data));
-                }
-                CallbackAction::SkipNext => {
-                    require(spotify.next());
-                }
-                CallbackAction::SkipPrev => {
-                    require(spotify.previous());
-                }
-                CallbackAction::Volume => {
-                    let vol = cmd.data.parse::<u32>().unwrap();
-                    require(spotify.volume(vol));
-                    let volume = &app.menu.volume;
-                    for item in volume {
-                        status.unsel_item(*item as u64);
-                    }
-                    status.sel_item(cmd.sender);
-                }
-            }
+            handle_callback(&mut app, &mut spotify, &mut status, &cmd);
             refresh_time_utc = now + 1;
         }
         status.run(false);

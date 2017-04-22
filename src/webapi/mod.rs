@@ -87,6 +87,15 @@ impl fmt::Display for ConnectDeviceList {
     }
 }
 
+impl<'a> iter::IntoIterator for &'a ConnectDeviceList {
+    type Item = &'a ConnectDevice;
+    //type IntoIter = ::std::vec::IntoIter<ConnectDevice>;
+    type IntoIter = ::std::slice::Iter<'a, ConnectDevice>;
+    fn into_iter(self) -> Self::IntoIter {
+        (&self.devices).into_iter()
+    }
+}
+
 impl iter::IntoIterator for ConnectDeviceList {
     type Item = ConnectDevice;
     type IntoIter = ::std::vec::IntoIter<ConnectDevice>;
