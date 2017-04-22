@@ -11,11 +11,14 @@ mkdir "$DST/$APPDIR/Contents/"
 mkdir "$DST/$APPDIR/Contents/Resources/"
 mkdir "$DST/$APPDIR/Contents/MacOS/"
 
-cp -a target/release/connectr $DST/Connectr.app/Contents/MacOS/
-cp -a spotify.png $DST/Connectr.app/Contents/Resources/
-cp -a connectr.ini.in $DST/Connectr.app/Contents/Resources/connectr.ini
+cp -a target/release/connectr "$DST/$APPDIR/Contents/MacOS/"
+cp -a spotify.png "$DST/$APPDIR/Contents/Resources/"
+cp -a connectr.ini.in "$DST/$APPDIR/Contents/Resources/connectr.ini"
+cp -a clientid_prompt.sh "$DST/$APPDIR/Contents/Resources/clientid_prompt.sh"
+chmod a+x "$DST/$APPDIR/Contents/Resources/clientid_prompt.sh"
+cp -a LICENSE "$DST/$APPDIR/Contents/Resources/LICENSE.txt"
 
-strip -u -r $DST/Connectr.app/Contents/MacOS/connectr
+strip -u -r "$DST/$APPDIR/Contents/MacOS/connectr"
 
 cat > "$DST/$APPDIR/Contents/Info.plist" << EOF
 {
@@ -25,7 +28,7 @@ cat > "$DST/$APPDIR/Contents/Info.plist" << EOF
    CFBundleExecutable = connectr;
    CFBundleIconFile = "connectr.icns";
 
-   CFBundleVersion = "1.0";
+   CFBundleVersion = "0.0.2";
    CFBundleInfoDictionaryVersion = "6.0";
    CFBundlePackageType = APPL;
    CFBundleSignature = xxxx;
