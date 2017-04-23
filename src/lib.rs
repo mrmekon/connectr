@@ -11,6 +11,9 @@ extern crate log;
 #[cfg(target_os = "macos")]
 pub mod osx;
 
+#[cfg(target_os = "windows")]
+pub mod win;
+
 #[cfg(target_os = "macos")]
 #[macro_use]
 extern crate objc;
@@ -36,15 +39,19 @@ pub mod spotify_api {
     pub const PLAYER: &'static str = "https://api.spotify.com/v1/me/player";
 }
 
+#[cfg(target_os = "unix")]
+pub type Object = u64;
+#[cfg(target_os = "windows")]
+pub type Object = u32;
 #[cfg(target_os = "macos")]
 pub type Object = osx::Object;
+
+#[cfg(target_os = "unix")]
+pub type StatusBar = DummyStatusBar;
 #[cfg(target_os = "macos")]
 pub type StatusBar = osx::OSXStatusBar;
-
-#[cfg(not(target_os = "macos"))]
-pub type Object = u64;
-#[cfg(not(target_os = "macos"))]
-pub type StatusBar = DummyStatusBar;
+#[cfg(target_os = "windows")]
+pub type StatusBar = windows::WindowsStatusBar;
 
 pub type MenuItem = *mut Object;
 pub trait TStatusBar {
@@ -58,7 +65,7 @@ pub trait TStatusBar {
     fn update_item(&mut self, item: *mut Object, label: &str);
     fn sel_item(&mut self, sender: u64);
     fn unsel_item(&mut self, sender: u64);
-    fn set_tooltip(&self, text: &str);
+    fn set_tooltip(&mut self, text: &str);
     fn run(&mut self, block: bool);
 }
 
@@ -77,7 +84,7 @@ impl TStatusBar for DummyStatusBar {
     fn update_item(&mut self, _: *mut Object, _: &str) {}
     fn sel_item(&mut self, _: u64) {}
     fn unsel_item(&mut self, _: u64) {}
-    fn set_tooltip(&self, _: &str) {}
+    fn set_tooltip(&mut self, _: &str) {}
     fn run(&mut self, _: bool) {}
 }
 
