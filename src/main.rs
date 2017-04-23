@@ -81,7 +81,7 @@ fn fill_menu<T: TStatusBar>(app: &mut ConnectrApp, spotify: &mut connectr::Spoti
     let ref player_state = app.player_state.as_ref().unwrap();
 
     println!("Playback State:\n{}", player_state);
-    let play_str = format!("{: ^50}\n{: ^50}\n{: ^50}",
+    let play_str = format!("{}\n{}\n{}",
                            &player_state.item.name,
                            &player_state.item.artists[0].name,
                            &player_state.item.album.name);

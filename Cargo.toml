@@ -43,6 +43,9 @@ log4rs = "0.6.3"
 ctrlc = "3.0.1"
 
 [target."cfg(windows)".dependencies]
+#systray = "0.1.1"
+#systray = {path = "../systray-rs"}
+systray = {git = "https://github.com/mrmekon/systray-rs.git"}
 
 [target."cfg(all(unix, not(target_os = \"macos\")))".dependencies]
 
