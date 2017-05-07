@@ -97,7 +97,7 @@ impl TStatusBar for OSXStatusBar {
             let _ = msg_send![old_menu, release];
         }
     }
-    fn set_tooltip(&self, text: &str) {
+    fn set_tooltip(&mut self, text: &str) {
         unsafe {
             let img = NSString::alloc(nil).init_str(text);
             let _ = msg_send![self.status_bar_item.button(), setToolTip: img];
