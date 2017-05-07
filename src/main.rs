@@ -392,7 +392,7 @@ fn main() {
 
     while running.load(Ordering::SeqCst) {
         let now = time::now_utc().to_timespec().sec as i64;
-        if now > refresh_time_utc {
+        if now > refresh_time_utc && status.can_redraw() {
             // Redraw the whole menu once every 60 seconds, or sooner if a
             // command is processed later.
             clear_menu(&mut app, &mut spotify, &mut status);
