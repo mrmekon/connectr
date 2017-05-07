@@ -38,8 +38,13 @@ pub mod spotify_api {
 
 #[cfg(target_os = "macos")]
 pub type Object = osx::Object;
+#[cfg(target_os = "macos")]
+pub type StatusBar = osx::OSXStatusBar;
+
 #[cfg(not(target_os = "macos"))]
 pub type Object = u64;
+#[cfg(not(target_os = "macos"))]
+pub type StatusBar = DummyStatusBar;
 
 pub type MenuItem = *mut Object;
 pub trait TStatusBar {
@@ -74,4 +79,42 @@ impl TStatusBar for DummyStatusBar {
     fn unsel_item(&mut self, _: u64) {}
     fn set_tooltip(&self, _: &str) {}
     fn run(&mut self, _: bool) {}
+}
+
+pub fn search_paths() -> Vec<String> {
+    use std::collections::BTreeSet;
+    //let mut v = Vec::<String>::new();
+    let mut v = BTreeSet::<String>::new();
+
+    // $HOME
+    if let Some(dir) = std::env::home_dir() {
+        v.insert(dir.display().to_string());
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    let bundle: Option<String> = None;
+    #[cfg(target_os = "macos")]
+    let bundle = osx::resource_dir();
+
+    // OS bundle/resource dir
+    if let Some(dir) = bundle {
+        v.insert(dir);
+    }
+
+    // $CWD
+    if let Ok(dir) = std::env::current_dir() {
+        v.insert(dir.display().to_string());
+    }
+
+    // exe_dir
+    if let Ok(mut dir) = std::env::current_exe() {
+        dir.pop(); // remove the actual executable
+        v.insert(dir.display().to_string());
+    }
+
+    let mut list: Vec<String> = Vec::new();
+    for dir in v {
+        list.push(dir);
+    }
+    list
 }

@@ -49,14 +49,12 @@ impl TStatusBar for OSXStatusBar {
     fn new(tx: Sender<String>) -> OSXStatusBar {
         let mut bar;
         unsafe {
-            let _ = NSAutoreleasePool::new(nil);
             let app = NSApp();
             let status_bar = NSStatusBar::systemStatusBar(nil);
             bar = OSXStatusBar {
                 app: app,
-                //status_bar_item: status_bar.statusItemWithLength_(NSSquareStatusItemLength),
                 status_bar_item: status_bar.statusItemWithLength_(NSVariableStatusItemLength),
-                menu_bar: NSMenu::new(nil).autorelease(),
+                menu_bar: NSMenu::new(nil),
                 object: NSObj::alloc(tx).setup(),
             };
             bar.app.setActivationPolicy_(NSApplicationActivationPolicyAccessory);
@@ -67,10 +65,14 @@ impl TStatusBar for OSXStatusBar {
             };
             let img = NSString::alloc(nil).init_str(&img_path);
             let icon = NSImage::alloc(nil).initWithContentsOfFile_(img);
+            let _ = msg_send![img, release];
             //let icon = NSImage::alloc(nil).initWithContentsOfFile_(img);
             //let icon = NSImage::imageNamed_(img, img);
-            NSButton::setTitle_(bar.status_bar_item, NSString::alloc(nil).init_str("connectr"));
+            let title = NSString::alloc(nil).init_str("connectr");
+            NSButton::setTitle_(bar.status_bar_item, title);
+            let _ = msg_send![title, release];
             bar.status_bar_item.button().setImage_(icon);
+            let _ = msg_send![icon, release];
             bar.status_bar_item.setMenu_(bar.menu_bar);
             bar.object.cb_fn = Some(Box::new(
                 move |s, sender| {
@@ -78,19 +80,25 @@ impl TStatusBar for OSXStatusBar {
                     cb(sender, &s.tx);
                 }
             ));
+            //unsafe { let _: () = msg_send![self.app, finishLaunching]; }
+            let _: () = msg_send![app, finishLaunching];
         }
         bar
     }
     fn clear_items(&mut self) {
         unsafe {
-            self.menu_bar = NSMenu::new(nil).autorelease();
+            let old_menu = self.menu_bar;
+            self.menu_bar = NSMenu::new(nil);
             self.status_bar_item.setMenu_(self.menu_bar);
+            let _ = msg_send![old_menu, removeAllItems];
+            let _ = msg_send![old_menu, release];
         }
     }
     fn set_tooltip(&self, text: &str) {
         unsafe {
             let img = NSString::alloc(nil).init_str(text);
             let _ = msg_send![self.status_bar_item.button(), setToolTip: img];
+            let _ = msg_send![img, release];
         }
     }
     fn add_label(&mut self, label: &str) {
@@ -98,9 +106,11 @@ impl TStatusBar for OSXStatusBar {
             let txt = NSString::alloc(nil).init_str(label);
             let quit_key = NSString::alloc(nil).init_str("");
             let app_menu_item = NSMenuItem::alloc(nil)
-                .initWithTitle_action_keyEquivalent_(txt, self.object.selector(), quit_key)
-                .autorelease();
+                .initWithTitle_action_keyEquivalent_(txt, self.object.selector(), quit_key);
+            let _ = msg_send![txt, release];
+            let _ = msg_send![quit_key, release];
             self.menu_bar.addItem_(app_menu_item);
+            let _ = msg_send![app_menu_item, release];
         }
     }
     fn add_quit(&mut self, label: &str) {
@@ -108,9 +118,11 @@ impl TStatusBar for OSXStatusBar {
             let txt = NSString::alloc(nil).init_str(label);
             let quit_key = NSString::alloc(nil).init_str("");
             let app_menu_item = NSMenuItem::alloc(nil)
-                .initWithTitle_action_keyEquivalent_(txt, sel!(terminate:), quit_key)
-                .autorelease();
+                .initWithTitle_action_keyEquivalent_(txt, sel!(terminate:), quit_key);
+            let _ = msg_send![txt, release];
+            let _ = msg_send![quit_key, release];
             self.menu_bar.addItem_(app_menu_item);
+            let _ = msg_send![app_menu_item, release];
         }
     }
     fn add_separator(&mut self) {
@@ -125,8 +137,9 @@ impl TStatusBar for OSXStatusBar {
             let txt = NSString::alloc(nil).init_str(item);
             let quit_key = NSString::alloc(nil).init_str("");
             let app_menu_item = NSMenuItem::alloc(nil)
-                .initWithTitle_action_keyEquivalent_(txt, self.object.selector(), quit_key)
-                .autorelease();
+                .initWithTitle_action_keyEquivalent_(txt, self.object.selector(), quit_key);
+            let _ = msg_send![txt, release];
+            let _ = msg_send![quit_key, release];
             self.object.add_callback(app_menu_item, callback);
             let objc = self.object.take_objc();
             let _: () = msg_send![app_menu_item, setTarget: objc];
@@ -135,6 +148,7 @@ impl TStatusBar for OSXStatusBar {
             }
             let item: *mut Object = app_menu_item;
             self.menu_bar.addItem_(app_menu_item);
+            let _ = msg_send![app_menu_item, release];
             item
         }
     }
@@ -142,6 +156,7 @@ impl TStatusBar for OSXStatusBar {
         unsafe {
             let ns_label = NSString::alloc(nil).init_str(label);
             let _: () = msg_send![item, setTitle: ns_label];
+            let _ = msg_send![ns_label, release];
         }
     }
     fn sel_item(&mut self, sender: u64) {
@@ -157,15 +172,9 @@ impl TStatusBar for OSXStatusBar {
         }
     }
     fn run(&mut self, block: bool) {
-        //unsafe {
-            //self.app.run();
-        //}
-        let _ = unsafe {NSAutoreleasePool::new(nil)};
-        unsafe { let _: () = msg_send![self.app, finishLaunching]; }
         loop {
-            sleep(Duration::from_millis(50));
             unsafe {
-                let _ = NSAutoreleasePool::new(nil);
+                let pool = NSAutoreleasePool::new(nil);
                 let cls = Class::get("NSDate").unwrap();
                 let date: Id<Object> = msg_send![cls, distantPast];
                 let mode = NSString::alloc(nil).init_str("kCFRunLoopDefaultMode");
@@ -173,8 +182,11 @@ impl TStatusBar for OSXStatusBar {
                                                   untilDate: date inMode:mode dequeue: YES];
                 let _ = msg_send![self.app, sendEvent: event];
                 let _ = msg_send![self.app, updateWindows];
+                let _ = msg_send![mode, release];
+                let _ = msg_send![pool, drain];
             }
             if !block { break; }
+            sleep(Duration::from_millis(50));
         }
     }
 }
@@ -189,6 +201,23 @@ pub fn osx_alert(text: &str) {
         let _ = msg_send![alert, setMessageText: ns_text];
         let _ = msg_send![alert, addButtonWithTitle: button];
         let _ = msg_send![alert, runModal];
+        let _ = msg_send![ns_text, release];
+        let _ = msg_send![button, release];
+        let _ = msg_send![alert, release];
+    }
+}
+
+pub fn resource_dir() -> Option<String> {
+    unsafe {
+        let cls = Class::get("NSBundle").unwrap();
+        let bundle: *mut Object = msg_send![cls, mainBundle];
+        let path: *mut Object = msg_send![bundle, resourcePath];
+        let cstr: *const libc::c_char = msg_send![path, UTF8String];
+        if cstr != ptr::null() {
+            let rstr = CStr::from_ptr(cstr).to_string_lossy().into_owned();
+            return Some(rstr);
+        }
+        None
     }
 }
 
@@ -199,6 +228,8 @@ pub fn bundled_resource_path(name: &str, extension: &str) -> Option<String> {
         let res = NSString::alloc(nil).init_str(name);
         let ext = NSString::alloc(nil).init_str(extension);
         let ini: *mut Object = msg_send![bundle, pathForResource:res ofType:ext];
+        let _ = msg_send![res, release];
+        let _ = msg_send![ext, release];
         let cstr: *const libc::c_char = msg_send![ini, UTF8String];
         if cstr != ptr::null() {
             let rstr = CStr::from_ptr(cstr).to_string_lossy().into_owned();

@@ -4,6 +4,10 @@ use connectr::TStatusBar;
 use connectr::MenuItem;
 use connectr::NSCallback;
 
+extern crate ctrlc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+
 #[macro_use]
 extern crate log;
 extern crate log4rs;
@@ -18,6 +22,8 @@ extern crate time;
 
 extern crate rustc_serialize;
 use rustc_serialize::json;
+
+use std::process;
 
 // How often to refresh Spotify state (if nothing triggers a refresh earlier).
 pub const REFRESH_PERIOD: i64 = 30;
@@ -38,9 +44,6 @@ struct MenuCallbackCommand {
     sender: u64,
     data: String,
 }
-
-#[cfg(target_os = "macos")]
-use connectr::osx;
 
 struct MenuItems {
     device: Vec<(MenuItem, String)>,
@@ -64,8 +67,16 @@ fn play_action_label(is_playing: bool) -> &'static str {
 }
 
 fn fill_menu<T: TStatusBar>(app: &mut ConnectrApp, spotify: &mut connectr::SpotifyConnectr, status: &mut T) {
-    app.device_list = Some(spotify.request_device_list());
-    app.player_state = Some(spotify.request_player_state());
+    let dev_list = spotify.request_device_list();
+    let player_state = spotify.request_player_state();
+    match dev_list {
+        Some(_) => { app.device_list = dev_list },
+        None => { return },
+    }
+    match player_state {
+        Some(_) => { app.player_state = player_state },
+        None => { return },
+    }
     let ref device_list = app.device_list.as_ref().unwrap();
     let ref player_state = app.player_state.as_ref().unwrap();
 
@@ -253,7 +264,11 @@ fn handle_callback<T: TStatusBar>(app: &mut ConnectrApp, spotify: &mut connectr:
             require(spotify.transfer(cmd.data.clone(), true));
         },
         CallbackAction::PlayPause => {
-            let player_state = spotify.request_player_state();
+            let fresh_player_state = spotify.request_player_state();
+            let player_state = match fresh_player_state {
+                Some(ref state) => state,
+                None => app.player_state.as_ref().unwrap(),
+            };
             match player_state.is_playing {
                 true => {require(spotify.pause());},
                 false => {require(spotify.play(None));},
@@ -307,13 +322,34 @@ fn refresh_time(app: &mut ConnectrApp, now: i64) -> i64 {
         None => REFRESH_PERIOD,
     };
     let refresh_offset = std::cmp::min(REFRESH_PERIOD, refresh_offset) as i64;
-    println!("State refresh in {} seconds.", refresh_offset);
+    info!("State refresh in {} seconds.", refresh_offset);
     now + refresh_offset
+}
+
+fn find_wine_path() -> Option<std::path::PathBuf> {
+    let search_paths = connectr::search_paths();
+    info!("Search paths: {:?}", search_paths);
+    for search_path in search_paths {
+        let path = std::path::PathBuf::from(search_path).join("wine");
+        if path.exists() && path.is_dir() {
+            return Some(path);
+        }
+    }
+    None
 }
 
 fn main() {
     create_logger();
     info!("Started Connectr");
+
+    let running = Arc::new(AtomicBool::new(true));
+    let r = running.clone();
+    match ctrlc::set_handler(move || {
+        r.store(false, Ordering::SeqCst);
+    }) {
+        Ok(_) => {},
+        Err(_) => { error!("Failed to register Ctrl-C handler."); }
+    }
 
     let mut app = ConnectrApp {
         menu: MenuItems {
@@ -334,13 +370,27 @@ fn main() {
     spotify.connect();
     info!("Created Spotify connection.");
     spotify.set_target_device(None);
-    #[cfg(target_os = "macos")]
-    let mut status = osx::OSXStatusBar::new(tx);
+    let mut status = connectr::StatusBar::new(tx);
     info!("Created status bar.");
-    #[cfg(not(target_os = "macos"))]
-    let mut status = connectr::DummyStatusBar::new(tx);
 
-    loop {
+    let mut tiny: Option<process::Child> = None;
+    if let Some(wine_dir) = find_wine_path() {
+        info!("Found wine root: {:?}", wine_dir);
+        let wine_exe = wine_dir.join("wine");
+        let tiny_exe = wine_dir.join("tiny.exe");
+        let config_dir = wine_dir.join("config");
+        debug!("{:?} / {:?} / {:?} / {:?}", wine_dir, wine_exe, config_dir, tiny_exe);
+        tiny = Some(process::Command::new(wine_exe)
+                    .env("WINEPREFIX", config_dir)
+                    .current_dir(wine_dir)
+                    .args(&[tiny_exe])
+                    .spawn().unwrap());
+    }
+    else {
+        warn!("Didn't find Wine in search path.");
+    }
+
+    while running.load(Ordering::SeqCst) {
         let now = time::now_utc().to_timespec().sec as i64;
         if now > refresh_time_utc {
             // Redraw the whole menu once every 60 seconds, or sooner if a
@@ -360,6 +410,11 @@ fn main() {
         }
         status.run(false);
         sleep(Duration::from_millis(10));
+    }
+    info!("Exiting.\n");
+    if let Some(mut tiny_proc) = tiny {
+        let _ = tiny_proc.kill();
+        let _ = tiny_proc.wait();
     }
 }
 

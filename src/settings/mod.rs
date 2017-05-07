@@ -52,13 +52,13 @@ fn inifile() -> String {
         return path;
     }
 
+    // Default to looking in current working directory
     let path = INIFILE.to_string();
     if path::Path::new(&path).exists() {
         info!("Found config: {}", path);
         return path;
     }
 
-    // Default to looking in current working directory
     String::new()
 }
 

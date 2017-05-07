@@ -393,12 +393,7 @@ impl SpotifyConnectr {
                                       &refresh_token,
                                       self.expire_utc.unwrap());
     }
-    pub fn connect(&mut self) {
-        if self.access_token.is_some() && !self.is_token_expired() {
-            println!("Reusing saved credentials.");
-            let _ = self.schedule_token_refresh();
-            return ()
-        }
+    pub fn authenticate(&mut self) {
         println!("Requesting fresh credentials.");
         self.auth_code = http::authenticate(&self.settings);
         let (access_token, refresh_token, expires_in) = request_oauth_tokens(&self.auth_code, &self.settings);
@@ -408,6 +403,14 @@ impl SpotifyConnectr {
         self.refresh_token = Some(refresh_token);
         self.expire_utc = Some(expire_utc);
         let _ = self.schedule_token_refresh();
+    }
+    pub fn connect(&mut self) {
+        if self.access_token.is_some() && !self.is_token_expired() {
+            println!("Reusing saved credentials.");
+            let _ = self.schedule_token_refresh();
+            return ()
+        }
+        self.authenticate()
     }
     pub fn bearer_token(&self) -> http::AccessToken {
         match self.access_token {
@@ -433,15 +436,29 @@ impl SpotifyConnectr {
         let (access_token, _, expires_in) = parse_spotify_token(&json_response);
         (access_token, expires_in)
     }
-    pub fn request_device_list(&self) -> ConnectDeviceList {
+    pub fn request_device_list(&mut self) -> Option<ConnectDeviceList> {
         let json_response = http::http(spotify_api::DEVICES, "", "",
-                                       http::HttpMethod::GET, self.bearer_token()).unwrap();
-        json::decode(&json_response).unwrap()
+                                       http::HttpMethod::GET, self.bearer_token());
+        match json_response.code {
+            Some(200) => Some(json::decode(&json_response.data.unwrap()).unwrap()),
+            Some(401) => {
+                self.authenticate();
+                None
+            }
+            _ => None
+        }
     }
-    pub fn request_player_state(&self) -> PlayerState {
+    pub fn request_player_state(&mut self) -> Option<PlayerState> {
         let json_response = http::http(spotify_api::PLAYER_STATE, "", "",
-                                       http::HttpMethod::GET, self.bearer_token()).unwrap();
-        json::decode(&json_response).unwrap()
+                                       http::HttpMethod::GET, self.bearer_token());
+        match json_response.code {
+            Some(200) => Some(json::decode(&json_response.data.unwrap()).unwrap()),
+            Some(401) => {
+                self.authenticate();
+                None
+            }
+            _ => None
+        }
     }
     pub fn set_target_device(&mut self, device: Option<DeviceId>) {
         self.device = device;
