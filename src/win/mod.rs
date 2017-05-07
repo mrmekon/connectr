@@ -29,8 +29,8 @@ impl TStatusBar for WindowsStatusBar {
             win.add_menu_item(&"Menu Item2".to_string(), false, |window| {println!("hello")});
             let idx = win.add_menu_item(&"Menu Item3".to_string(), false, |window| {println!("hello")});
             let idx = idx.unwrap();
-            win.select_menu_entry(idx);
-            win.unselect_menu_entry(idx);
+            win.select_menu_item(idx);
+            win.unselect_menu_item(idx);
             win.clear_menu();
             win.add_menu_item(&"Menu Item4".to_string(), false, |window| {println!("hello")});
         }
@@ -64,14 +64,14 @@ impl TStatusBar for WindowsStatusBar {
     }
     fn sel_item(&mut self, sender: u64) {
         let ref mut win = &mut self.app.window;
-        win.select_menu_entry(sender as u32);
+        win.select_menu_item(sender as u32);
     }
     fn unsel_item(&mut self, sender: u64) {
         let ref mut win = &mut self.app.window;
-        win.unselect_menu_entry(sender as u32);
+        win.unselect_menu_item(sender as u32);
     }
     fn run(&mut self, block: bool) {
         let ref mut win = &mut self.app.window;
-        win.wait_for_message();
+        win.wait_for_message(block);
     }
 }
