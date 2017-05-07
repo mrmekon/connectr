@@ -25,6 +25,7 @@ The underlying library should be fully cross-platform, though I'm not actually t
 
 ### Screenshot
 <img src="https://github.com/mrmekon/connectr/blob/master/docs/screenshot.png" width="300">
+<img src="https://github.com/mrmekon/connectr/blob/master/docs/screenshot_windows.png" width="300">
 
 ### Instructions
 
@@ -112,17 +113,17 @@ expire=1492766270
 |                                        |
 |                                        |
 | **UI**                                 |
-| Display current track                  | <ul><li> [x] </li></ul> | <ul><li> [ ] </li></ul> | <ul><li> [ ] </li></ul> |
-| Current track in tooltip               | <ul><li> [x] </li></ul> | <ul><li> [ ] </li></ul> | <ul><li> [ ] </li></ul> |
-| Playback controls                      | <ul><li> [x] </li></ul> | <ul><li> [ ] </li></ul> | <ul><li> [ ] </li></ul> |
-| Device selection                       | <ul><li> [x] </li></ul> | <ul><li> [ ] </li></ul> | <ul><li> [ ] </li></ul> |
-| Volume control                         | <ul><li> [x] </li></ul> | <ul><li> [ ] </li></ul> | <ul><li> [ ] </li></ul> |
-| Presets                                | <ul><li> [x] </li></ul> | <ul><li> [ ] </li></ul> | <ul><li> [ ] </li></ul> |
+| Display current track                  | <ul><li> [x] </li></ul> | <ul><li> [x] </li></ul> | <ul><li> [ ] </li></ul> |
+| Current track in tooltip               | <ul><li> [x] </li></ul> | <ul><li> [x] </li></ul> | <ul><li> [ ] </li></ul> |
+| Playback controls                      | <ul><li> [x] </li></ul> | <ul><li> [x] </li></ul> | <ul><li> [ ] </li></ul> |
+| Device selection                       | <ul><li> [x] </li></ul> | <ul><li> [x] </li></ul> | <ul><li> [ ] </li></ul> |
+| Volume control                         | <ul><li> [x] </li></ul> | <ul><li> [x] </li></ul> | <ul><li> [ ] </li></ul> |
+| Presets                                | <ul><li> [x] </li></ul> | <ul><li> [x] </li></ul> | <ul><li> [ ] </li></ul> |
 | Save current track to playlist         | <ul><li> [ ] </li></ul> | <ul><li> [ ] </li></ul> | <ul><li> [ ] </li></ul> |
 |                                        |
 |                                        |
 | **System**                             |
-| Persistent configuration               | <ul><li> [x] </li></ul> | <ul><li> [ ] </li></ul> | <ul><li> [ ] </li></ul> |
-| System logging                         | <ul><li> [x] </li></ul> | <ul><li> [ ] </li></ul> | <ul><li> [ ] </li></ul> |
+| Persistent configuration               | <ul><li> [x] </li></ul> | <ul><li> [x] </li></ul> | <ul><li> [ ] </li></ul> |
+| System logging                         | <ul><li> [x] </li></ul> | <ul><li> [x] </li></ul> | <ul><li> [ ] </li></ul> |
 | Installer                              | <ul><li> [x] </li></ul> | <ul><li> [ ] </li></ul> | <ul><li> [ ] </li></ul> |
 
