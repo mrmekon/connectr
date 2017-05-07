@@ -24,19 +24,16 @@ impl TStatusBar for WindowsStatusBar {
         {
             let ref mut win = &mut bar.app.window;
             win.set_icon_from_file(&"spotify.ico".to_string());
-            win.add_menu_separator();
-            win.add_menu_item(&"Menu Item1".to_string(), true, |window| {println!("hello")});
-            win.add_menu_item(&"Menu Item2".to_string(), false, |window| {println!("hello")});
-            let idx = win.add_menu_item(&"Menu Item3".to_string(), false, |window| {println!("hello")});
-            let idx = idx.unwrap();
-            win.select_menu_item(idx);
-            win.unselect_menu_item(idx);
-            win.clear_menu();
-            win.add_menu_item(&"Menu Item4".to_string(), false, |window| {println!("hello")});
         }
         bar
     }
+    fn can_redraw(&mut self) -> bool {
+        let ref mut win = &mut self.app.window;
+        !win.menu_displayed()
+    }
     fn clear_items(&mut self) {
+        let ref mut win = &mut self.app.window;
+        win.clear_menu();
     }
     fn set_tooltip(&mut self, text: &str) {
         let ref mut win = &mut self.app.window;

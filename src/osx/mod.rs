@@ -85,6 +85,9 @@ impl TStatusBar for OSXStatusBar {
         }
         bar
     }
+    fn can_redraw(&mut self) -> bool {
+        true
+    }
     fn clear_items(&mut self) {
         unsafe {
             let old_menu = self.menu_bar;

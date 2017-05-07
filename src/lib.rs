@@ -51,12 +51,13 @@ pub type StatusBar = DummyStatusBar;
 #[cfg(target_os = "macos")]
 pub type StatusBar = osx::OSXStatusBar;
 #[cfg(target_os = "windows")]
-pub type StatusBar = windows::WindowsStatusBar;
+pub type StatusBar = win::WindowsStatusBar;
 
 pub type MenuItem = *mut Object;
 pub trait TStatusBar {
     type S: TStatusBar;
     fn new(tx: Sender<String>) -> Self::S;
+    fn can_redraw(&mut self) -> bool;
     fn clear_items(&mut self);
     fn add_separator(&mut self);
     fn add_label(&mut self, label: &str);
@@ -76,6 +77,7 @@ pub struct DummyStatusBar {}
 impl TStatusBar for DummyStatusBar {
     type S = DummyStatusBar;
     fn new(_: Sender<String>) -> Self::S { DummyStatusBar {} }
+    fn can_redraw(&mut self) -> bool { true }
     fn clear_items(&mut self) {}
     fn add_separator(&mut self) {}
     fn add_label(&mut self, _: &str) {}
