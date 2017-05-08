@@ -20,7 +20,7 @@ The underlying library should be fully cross-platform, though I'm not actually t
 
 *Systray/Menubar Application*:
 * Mac OS X - Mostly done
-* Windows - Coming next
+* Windows - Mostly done
 * Linux - Maybe, but I don't use a desktop environment so I don't really care
 
 ### Screenshot
