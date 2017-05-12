@@ -66,17 +66,21 @@ fn play_action_label(is_playing: bool) -> &'static str {
     }
 }
 
-fn fill_menu<T: TStatusBar>(app: &mut ConnectrApp, spotify: &mut connectr::SpotifyConnectr, status: &mut T) {
+fn update_state(app: &mut ConnectrApp, spotify: &mut connectr::SpotifyConnectr) -> bool {
     let dev_list = spotify.request_device_list();
     let player_state = spotify.request_player_state();
     match dev_list {
         Some(_) => { app.device_list = dev_list },
-        None => { return },
+        None => { return false },
     }
     match player_state {
         Some(_) => { app.player_state = player_state },
-        None => { return },
+        None => { return false },
     }
+    true
+}
+
+fn fill_menu<T: TStatusBar>(app: &mut ConnectrApp, spotify: &mut connectr::SpotifyConnectr, status: &mut T) {
     let ref device_list = app.device_list.as_ref().unwrap();
     let ref player_state = app.player_state.as_ref().unwrap();
 
@@ -392,7 +396,7 @@ fn main() {
 
     while running.load(Ordering::SeqCst) {
         let now = time::now_utc().to_timespec().sec as i64;
-        if now > refresh_time_utc && status.can_redraw() {
+        if now > refresh_time_utc && status.can_redraw() && update_state(&mut app, &mut spotify) {
             // Redraw the whole menu once every 60 seconds, or sooner if a
             // command is processed later.
             clear_menu(&mut app, &mut spotify, &mut status);
@@ -409,7 +413,7 @@ fn main() {
             refresh_time_utc = now + 1;
         }
         status.run(false);
-        sleep(Duration::from_millis(10));
+        sleep(Duration::from_millis(100));
     }
     info!("Exiting.\n");
     if let Some(mut tiny_proc) = tiny {

@@ -15,7 +15,6 @@ extern crate url;
 use self::url::percent_encoding;
 
 use super::settings;
-use super::spotify_api;
 
 #[derive(PartialEq)]
 pub enum HttpMethod {
@@ -128,6 +127,8 @@ pub fn http(url: &str, query: &str, body: &str,
             match transfer.perform() {
                 Err(x) => {
                     let result: Result<String,String> = Err(x.description().to_string());
+                    #[cfg(feature = "verbose_http")]
+                    println!("HTTP response: err: {}", x.description().to_string());
                     return HttpResponse {code: response, data: result }
                 }
                 _ => {}
@@ -147,11 +148,10 @@ pub fn http(url: &str, query: &str, body: &str,
     HttpResponse {code: response, data: result }
 }
 
-pub fn authenticate(settings: &settings::Settings) -> String {
-    let scopes = spotify_api::SCOPES.join(" ");
+pub fn authenticate(scopes: &str, url: &str, settings: &settings::Settings) -> String {
     let host = format!("http://127.0.0.1:{}", settings.port);
     let url = format!("{}?client_id={}&response_type=code&scope={}&redirect_uri={}",
-                      spotify_api::AUTHORIZE,settings.client_id, scopes, host);
+                      url,settings.client_id, scopes, host);
     let query = percent_encoding::utf8_percent_encode(&url, percent_encoding::QUERY_ENCODE_SET).collect::<String>();
     let response = "HTTP/1.1 200 OK\r\n\r\n<html><body>
 Authenticated with Spotify.<br/><br/>

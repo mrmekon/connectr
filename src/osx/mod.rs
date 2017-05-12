@@ -28,6 +28,7 @@ use self::rustnsobject::{NSObj, NSObjTrait, NSObjCallbackTrait};
 use std::sync::mpsc::Sender;
 
 use std::ptr;
+use std::cell::Cell;
 use std::ffi::CStr;
 use std::thread::sleep;
 use std::time::Duration;
@@ -42,6 +43,14 @@ pub struct OSXStatusBar {
     app: *mut objc::runtime::Object,
     status_bar_item: *mut objc::runtime::Object,
     menu_bar: *mut objc::runtime::Object,
+
+    // Run loop state
+    // Keeping these in persistent state instead of recalculating saves quite a
+    // bit of CPU during idle.
+    pool: Cell<*mut objc::runtime::Object>,
+    run_count: Cell<u64>,
+    run_mode: *mut objc::runtime::Object,
+    run_date: *mut objc::runtime::Object,
 }
 
 impl TStatusBar for OSXStatusBar {
@@ -51,11 +60,16 @@ impl TStatusBar for OSXStatusBar {
         unsafe {
             let app = NSApp();
             let status_bar = NSStatusBar::systemStatusBar(nil);
+            let date_cls = Class::get("NSDate").unwrap();
             bar = OSXStatusBar {
                 app: app,
                 status_bar_item: status_bar.statusItemWithLength_(NSVariableStatusItemLength),
                 menu_bar: NSMenu::new(nil),
                 object: NSObj::alloc(tx).setup(),
+                pool: Cell::new(nil),
+                run_count: Cell::new(0),
+                run_mode: NSString::alloc(nil).init_str("kCFRunLoopDefaultMode"),
+                run_date: msg_send![date_cls, distantPast],
             };
             bar.app.setActivationPolicy_(NSApplicationActivationPolicyAccessory);
             msg_send![bar.status_bar_item, setHighlightMode:YES];
@@ -80,7 +94,6 @@ impl TStatusBar for OSXStatusBar {
                     cb(sender, &s.tx);
                 }
             ));
-            //unsafe { let _: () = msg_send![self.app, finishLaunching]; }
             let _: () = msg_send![app, finishLaunching];
         }
         bar
@@ -177,16 +190,21 @@ impl TStatusBar for OSXStatusBar {
     fn run(&mut self, block: bool) {
         loop {
             unsafe {
-                let pool = NSAutoreleasePool::new(nil);
-                let cls = Class::get("NSDate").unwrap();
-                let date: Id<Object> = msg_send![cls, distantPast];
-                let mode = NSString::alloc(nil).init_str("kCFRunLoopDefaultMode");
+                let run_count = self.run_count.get();
+                // Create a new release pool every once in a while, draining the old one
+                if run_count % 100 == 0 {
+                    let old_pool = self.pool.get();
+                    if run_count != 0 {
+                        let _ = msg_send![old_pool, drain];
+                    }
+                    self.pool.set(NSAutoreleasePool::new(nil));
+                }
+                let mode = self.run_mode;
                 let event: Id<Object> = msg_send![self.app, nextEventMatchingMask: -1
-                                                  untilDate: date inMode:mode dequeue: YES];
+                                                  untilDate: self.run_date inMode:mode dequeue: YES];
                 let _ = msg_send![self.app, sendEvent: event];
                 let _ = msg_send![self.app, updateWindows];
-                let _ = msg_send![mode, release];
-                let _ = msg_send![pool, drain];
+                self.run_count.set(run_count + 1);
             }
             if !block { break; }
             sleep(Duration::from_millis(50));
@@ -194,21 +212,21 @@ impl TStatusBar for OSXStatusBar {
     }
 }
 
-pub fn osx_alert(text: &str) {
-    unsafe {
-        let ns_text = NSString::alloc(nil).init_str(text);
-        let button = NSString::alloc(nil).init_str("ok");
-        let cls = Class::get("NSAlert").unwrap();
-        let alert: *mut Object = msg_send![cls, alloc];
-        let _ = msg_send![alert, init];
-        let _ = msg_send![alert, setMessageText: ns_text];
-        let _ = msg_send![alert, addButtonWithTitle: button];
-        let _ = msg_send![alert, runModal];
-        let _ = msg_send![ns_text, release];
-        let _ = msg_send![button, release];
-        let _ = msg_send![alert, release];
-    }
-}
+//pub fn osx_alert(text: &str) {
+//    unsafe {
+//        let ns_text = NSString::alloc(nil).init_str(text);
+//        let button = NSString::alloc(nil).init_str("ok");
+//        let cls = Class::get("NSAlert").unwrap();
+//        let alert: *mut Object = msg_send![cls, alloc];
+//        let _ = msg_send![alert, init];
+//        let _ = msg_send![alert, setMessageText: ns_text];
+//        let _ = msg_send![alert, addButtonWithTitle: button];
+//        let _ = msg_send![alert, runModal];
+//        let _ = msg_send![ns_text, release];
+//        let _ = msg_send![button, release];
+//        let _ = msg_send![alert, release];
+//    }
+//}
 
 pub fn resource_dir() -> Option<String> {
     unsafe {

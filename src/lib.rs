@@ -5,6 +5,10 @@ pub mod webapi;
 // Re-export webapi interface to connectr root
 pub use webapi::*;
 
+#[cfg(test)]
+#[macro_use]
+extern crate lazy_static;
+
 #[macro_use]
 extern crate log;
 
@@ -20,24 +24,40 @@ extern crate objc;
 
 extern crate rustc_serialize;
 
-pub mod spotify_api {
-    pub const SCOPES: &'static [&'static str] = &[
-        "user-read-private", "streaming", "user-read-playback-state"
-    ];
-    pub const AUTHORIZE: &'static str = "https://accounts.spotify.com/en/authorize";
-    pub const TOKEN: &'static str = "https://accounts.spotify.com/api/token";
-    pub const DEVICES: &'static str = "https://api.spotify.com/v1/me/player/devices";
-    pub const PLAYER_STATE: &'static str = "https://api.spotify.com/v1/me/player";
-    pub const PLAY: &'static str = "https://api.spotify.com/v1/me/player/play";
-    pub const PAUSE: &'static str = "https://api.spotify.com/v1/me/player/pause";
-    pub const NEXT: &'static str = "https://api.spotify.com/v1/me/player/next";
-    pub const PREVIOUS: &'static str = "https://api.spotify.com/v1/me/player/previous";
-    pub const SEEK: &'static str = "https://api.spotify.com/v1/me/player/seek";
-    pub const VOLUME: &'static str = "https://api.spotify.com/v1/me/player/volume";
-    pub const SHUFFLE: &'static str = "https://api.spotify.com/v1/me/player/shuffle";
-    pub const REPEAT: &'static str = "https://api.spotify.com/v1/me/player/repeat";
-    pub const PLAYER: &'static str = "https://api.spotify.com/v1/me/player";
+#[derive(Clone, Copy)]
+pub struct SpotifyEndpoints<'a> {
+    scopes: &'a str,
+    authorize: &'a str,
+    token: &'a str,
+    devices: &'a str,
+    player_state: &'a str,
+    play: &'a str,
+    pause: &'a str,
+    next: &'a str,
+    previous: &'a str,
+    seek: &'a str,
+    volume: &'a str,
+    shuffle: &'a str,
+    repeat: &'a str,
+    player: &'a str,
 }
+
+pub const SPOTIFY_API: SpotifyEndpoints = SpotifyEndpoints {
+    scopes: "user-read-private streaming user-read-playback-state",
+    authorize: "https://accounts.spotify.com/en/authorize",
+    token: "https://accounts.spotify.com/api/token",
+    devices: "https://api.spotify.com/v1/me/player/devices",
+    player_state: "https://api.spotify.com/v1/me/player",
+    play: "https://api.spotify.com/v1/me/player/play",
+    pause: "https://api.spotify.com/v1/me/player/pause",
+    next: "https://api.spotify.com/v1/me/player/next",
+    previous: "https://api.spotify.com/v1/me/player/previous",
+    seek: "https://api.spotify.com/v1/me/player/seek",
+    volume: "https://api.spotify.com/v1/me/player/volume",
+    shuffle: "https://api.spotify.com/v1/me/player/shuffle",
+    repeat: "https://api.spotify.com/v1/me/player/repeat",
+    player: "https://api.spotify.com/v1/me/player",
+};
 
 #[cfg(target_os = "unix")]
 pub type Object = u64;
