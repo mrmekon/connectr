@@ -71,22 +71,46 @@ impl TStatusBar for OSXStatusBar {
                 run_mode: NSString::alloc(nil).init_str("kCFRunLoopDefaultMode"),
                 run_date: msg_send![date_cls, distantPast],
             };
+            // Don't become foreground app on launch
             bar.app.setActivationPolicy_(NSApplicationActivationPolicyAccessory);
+
+            // Default mode for menu bar items: blue highlight when selected
             msg_send![bar.status_bar_item, setHighlightMode:YES];
-            let img_path = match bundled_resource_path("spotify", "png") {
-                Some(path) => path,
-                None => "spotify.png".to_string(),
-            };
-            let img = NSString::alloc(nil).init_str(&img_path);
-            let icon = NSImage::alloc(nil).initWithContentsOfFile_(img);
-            let _ = msg_send![img, release];
-            //let icon = NSImage::alloc(nil).initWithContentsOfFile_(img);
-            //let icon = NSImage::imageNamed_(img, img);
+
+            // Set title.  Only displayed if image fails to load.
             let title = NSString::alloc(nil).init_str("connectr");
             NSButton::setTitle_(bar.status_bar_item, title);
             let _ = msg_send![title, release];
+
+            // Look for icon in OS X bundle if there is one, otherwise current dir.
+            // See docs/icons.md for explanation of icon files.
+            // TODO: Use the full list of search paths.
+            let icon_name = "connectr_80px_300dpi";
+            let img_path = match bundled_resource_path(icon_name, "png") {
+                Some(path) => path,
+                None => format!("{}.png", icon_name),
+            };
+
+            // Set the status bar image.  Switching on setTemplate switches it to
+            // using OS X system-style icons that are masked to all white.  I
+            // prefer color, but that should maybe be configurable.
+            let img = NSString::alloc(nil).init_str(&img_path);
+            let icon = NSImage::alloc(nil).initWithContentsOfFile_(img);
+            //let _ = msg_send![icon, setTemplate: YES]; // enable to make icon white
             bar.status_bar_item.button().setImage_(icon);
+            let _ = msg_send![img, release];
             let _ = msg_send![icon, release];
+
+            // Add the same image again as an alternate image.  I'm not sure how the
+            // blending is performed, but it behaves differently and better if an
+            // alt image is specified.  Without an alt image, the icon darkens too
+            // much in 'dark mode' when selected, and is too light in 'light mode'.
+            let img = NSString::alloc(nil).init_str(&img_path);
+            let icon = NSImage::alloc(nil).initWithContentsOfFile_(img);
+            let _ = msg_send![bar.status_bar_item.button(), setAlternateImage: icon];
+            let _ = msg_send![img, release];
+            let _ = msg_send![icon, release];
+
             bar.status_bar_item.setMenu_(bar.menu_bar);
             bar.object.cb_fn = Some(Box::new(
                 move |s, sender| {
