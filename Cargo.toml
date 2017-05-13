@@ -4,7 +4,7 @@ version = "0.0.2"
 authors = [ "Trevor Bentley <trevor@trevorbentley.com>" ]
 
 description = "Spotify Connect library and systray/menubar application for controlling Spotify devices."
-keywords = ["spotify", "connect", "spotify connect", "webapi", "systray", "menubar"]
+keywords = ["spotify", "connect", "webapi", "systray", "menubar"]
 categories = ["api-bindings"]
 homepage = "https://github.com/mrmekon/connectr"
 repository = "https://github.com/mrmekon/connectr"
