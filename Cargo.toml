@@ -5,6 +5,7 @@ authors = [ "Trevor Bentley <trevor@trevorbentley.com>" ]
 
 description = "Spotify Connect library and systray/menubar application for controlling Spotify devices."
 keywords = ["spotify", "connect", "spotify connect", "webapi", "systray", "menubar"]
+categories = ["api-bindings"]
 homepage = "https://github.com/mrmekon/connectr"
 repository = "https://github.com/mrmekon/connectr"
 license = "Apache-2.0"
@@ -44,8 +45,8 @@ ctrlc = "3.0.1"
 
 [target."cfg(windows)".dependencies]
 #systray = "0.1.1"
-#systray = {path = "../systray-rs"}
-systray = {git = "https://github.com/mrmekon/systray-rs.git"}
+#systray = {git = "https://github.com/mrmekon/systray-rs.git"}
+systray = {path = "deps/systray-rs", version="0.1.1-connectr"}
 
 [target."cfg(all(unix, not(target_os = \"macos\")))".dependencies]
 
@@ -59,6 +60,7 @@ version = "0.2.2"
 features = ["exception"]
 
 [dev-dependencies]
-hyper = {git = "https://github.com/hyperium/hyper"}
+#hyper = {git = "https://github.com/hyperium/hyper"}
+hyper = {path = "deps/hyper", version="0.11.0-a.0"}
 futures = "0.1.11"
 lazy_static = "0.2"

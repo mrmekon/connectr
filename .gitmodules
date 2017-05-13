@@ -1,0 +1,6 @@
+[submodule "deps/hyper"]
+	path = deps/hyper
+	url = https://github.com/hyperium/hyper
+[submodule "deps/systray-rs"]
+	path = deps/systray-rs
+	url = https://github.com/mrmekon/systray-rs
