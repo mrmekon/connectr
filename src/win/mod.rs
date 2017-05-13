@@ -30,7 +30,7 @@ impl TStatusBar for WindowsStatusBar {
         };
         {
             let ref mut win = &mut bar.app.window;
-            win.set_icon_from_file(&"spotify.ico".to_string());
+            let _ = win.set_icon_from_file(&"spotify.ico".to_string());
         }
         bar
     }
@@ -40,48 +40,55 @@ impl TStatusBar for WindowsStatusBar {
     }
     fn clear_items(&mut self) {
         let ref mut win = &mut self.app.window;
-        win.clear_menu();
+        let _ = win.clear_menu();
         self.items.clear();
     }
     fn set_tooltip(&mut self, text: &str) {
         let ref mut win = &mut self.app.window;
-        win.set_tooltip(&text.to_string());
+        // Truncate to 128 (including NUL) for stupid W32 API
+        let tooltip = match text.len() {
+            len @ _ if len > 127 => format!("{}...", &text[0..124]),
+            _ => text.to_string(),
+        };
+        let _ = win.set_tooltip(&tooltip);
     }
     fn add_label(&mut self, label: &str) {
         let ref mut win = &mut self.app.window;
-        let idx = win.add_menu_item(&label.to_string(), false, |window| {});
-        win.enable_menu_item(idx.unwrap(), MenuEnableFlag::Disabled);
+        let idx = win.add_menu_item(&label.to_string(), false, |_| {});
+        let _ = win.enable_menu_item(idx.unwrap(), MenuEnableFlag::Disabled);
     }
     fn add_quit(&mut self, label: &str) {
         let ref mut win = &mut self.app.window;
-        win.add_menu_item(&"Quit".to_string(), false, |window| { window.quit(); panic!("goodness."); });
+        // TODO: shutdown without a panic
+        let _ = win.add_menu_item(&label.to_string(), false,
+                                  |window| { window.quit(); panic!(""); });
     }
     fn add_separator(&mut self) {
         let ref mut win = &mut self.app.window;
-        win.add_menu_separator();
+        let _ = win.add_menu_separator();
     }
     fn add_item(&mut self, item: &str, callback: NSCallback, selected: bool) -> *mut Object {
         let ref mut win = &mut self.app.window;
         let idx = self.idx.get();
         self.idx.set(idx+1);
         let tx = self.tx.clone();
-        let item = win.add_menu_item(&item.to_string(), selected, move |window| {
+        let item = win.add_menu_item(&item.to_string(), selected, move |_| {
             callback(idx as u64, &tx);
         }).unwrap();
         self.items.insert(idx as u64, item);
         idx as *mut Object
     }
-    fn update_item(&mut self, item: *mut Object, label: &str) {
+    fn update_item(&mut self, _item: *mut Object, _label: &str) {
     }
     fn sel_item(&mut self, sender: u64) {
         let ref mut win = &mut self.app.window;
         let obj = self.items.get(&sender).unwrap();
-        win.select_menu_item(*obj);
+        let _ = win.select_menu_item(*obj);
     }
     fn unsel_item(&mut self, sender: u64) {
         let ref mut win = &mut self.app.window;
         let obj = self.items.get(&sender).unwrap();
-        win.unselect_menu_item(*obj);
+        let _ = win.unselect_menu_item(*obj);
     }
     fn run(&mut self, block: bool) {
         let ref mut win = &mut self.app.window;
