@@ -14,14 +14,20 @@ Alpha / Hobby / Experimental
 ### Code Status
 Sloppy; this is my first Rust.
 
+### Cargo Crate
+[connectr on crates.io](https://crates.io/crates/connectr)
+
 ### Platform Status
 
-The underlying library should be fully cross-platform, though I'm not actually testing that yet.  Let me know if you run it on an ARM; I'd like to know if that works.
+The underlying library should be fully cross-platform, though I'm only testing x86_64 Windows and OS X.  Let me know if you run it on an ARM; I'd like to know if that works.
+
+*Web API Library*:
+Fully functional and pretty stable for the requirements of the connectr menu bar app.  Error handling isn't extremely robust, and it doesn't implement retries or exponential backoff, which it should.  The Spotify API can, of course, do plenty more than connectr exposes.
 
 *Systray/Menubar Application*:
-* Mac OS X - Mostly done
-* Windows - Mostly done
-* Linux - Maybe, but I don't use a desktop environment so I don't really care
+* Mac OS X - Done
+* Windows - Done
+* Linux - Maybe someday
 
 ### Screenshot
 <img src="https://github.com/mrmekon/connectr/blob/master/docs/screenshot.png" width="300">
