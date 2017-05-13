@@ -30,7 +30,7 @@ impl TStatusBar for WindowsStatusBar {
         };
         {
             let ref mut win = &mut bar.app.window;
-            let _ = win.set_icon_from_file(&"spotify.ico".to_string());
+            let _ = win.set_icon_from_file(&"connectr.ico".to_string());
         }
         bar
     }
