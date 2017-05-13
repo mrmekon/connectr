@@ -1,4 +1,4 @@
-# connectr
+# ![icon](connectr_80px_300dpi.png) connectr ![icon](connectr_80px_300dpi.png)
 
 connectr is a Rust library and systray/menubar application for controlling and monitoring [Spotify Connect](https://www.spotify.com/se/connect/) devices.
 
