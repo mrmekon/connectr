@@ -9,6 +9,8 @@ As an application, connectr provides a minimal "systray" application to observe 
 *Note:* connectr is not an audio playback tool; it's just a remote control.  Spotify has not publicly released a library for implementing audio playback with Spotify Connect support.  There's a reverse engineering effort, coincidentally also in Rust, at [librespot](https://github.com/plietar/librespot).
 
 ### Development Status
+[![Build Status](https://travis-ci.org/mrmekon/connectr.svg?branch=master)](https://travis-ci.org/mrmekon/connectr)
+
 Alpha / Hobby / Experimental
 
 ### Code Status
