@@ -3,6 +3,12 @@ rust:
   - stable
   - beta
   - nightly
+os:
+ - osx
+ - windows
 matrix:
   allow_failures:
     - rust: nightly
+install:
+- curl https://static.rust-lang.org/rustup.sh |
+    sh -s -- --prefix=$HOME/rust
