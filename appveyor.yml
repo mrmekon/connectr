@@ -49,14 +49,16 @@ environment:
   # Beta 32-bit MSVC
     - channel: beta
       target: i686-pc-windows-msvc
-  # Nightly 64-bit MSVC
-    - channel: nightly
-      target: x86_64-pc-windows-msvc
-      #cargoflags: --features "unstable"
-  # Nightly 32-bit MSVC
-    - channel: nightly
-      target: i686-pc-windows-msvc
-      #cargoflags: --features "unstable"
+
+# Appveyor is slow.  Disable nightly for now.
+#  # Nightly 64-bit MSVC
+#    - channel: nightly
+#      target: x86_64-pc-windows-msvc
+#      #cargoflags: --features "unstable"
+#  # Nightly 32-bit MSVC
+#    - channel: nightly
+#      target: i686-pc-windows-msvc
+#      #cargoflags: --features "unstable"
 
 ### GNU Toolchains ###
 
@@ -92,6 +94,11 @@ matrix:
 
 # If you only care about stable channel build failures, uncomment the following line:
     #- channel: beta
+
+# Only build direct changes to master branch.  PRs still built.
+branches:
+  only:
+    - "master"
 
 ## Install Script ##
 
