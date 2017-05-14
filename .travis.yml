@@ -10,6 +10,10 @@ os:
 matrix:
   allow_failures:
     - rust: nightly
+# Only build direct changes to master branch.  PRs still built.
+branches:
+  only:
+    - "master"
 install:
 - curl https://static.rust-lang.org/rustup.sh |
     sh -s -- --prefix=$HOME/rust
