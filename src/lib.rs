@@ -59,14 +59,14 @@ pub const SPOTIFY_API: SpotifyEndpoints = SpotifyEndpoints {
     player: "https://api.spotify.com/v1/me/player",
 };
 
-#[cfg(target_os = "unix")]
+#[cfg(target_os = "linux")]
 pub type Object = u64;
 #[cfg(target_os = "windows")]
 pub type Object = u32;
 #[cfg(target_os = "macos")]
 pub type Object = osx::Object;
 
-#[cfg(target_os = "unix")]
+#[cfg(target_os = "linux")]
 pub type StatusBar = DummyStatusBar;
 #[cfg(target_os = "macos")]
 pub type StatusBar = osx::OSXStatusBar;
