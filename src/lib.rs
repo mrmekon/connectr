@@ -22,7 +22,8 @@ pub mod win;
 #[macro_use]
 extern crate objc;
 
-extern crate rustc_serialize;
+#[macro_use]
+extern crate serde_derive;
 
 #[derive(Clone, Copy)]
 pub struct SpotifyEndpoints<'a> {
