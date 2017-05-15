@@ -18,7 +18,7 @@ Alpha / Hobby / Experimental
 Sloppy; this is my first Rust.
 
 ### Cargo Crate
-[connectr on crates.io](https://crates.io/crates/connectr)
+[![Crates.io Version](https://img.shields.io/crates/v/connectr.svg)](https://crates.io/crates/connectr)
 
 ### Platform Status
 
