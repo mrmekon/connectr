@@ -12,9 +12,8 @@ use std::cell::Cell;
 use std::collections::BTreeMap;
 use std::sync::mpsc::{channel, Receiver};
 
-extern crate rustc_serialize;
-use self::rustc_serialize::{Decodable, Decoder, json};
-use self::rustc_serialize::json::Json;
+extern crate serde_json;
+use self::serde_json::Value;
 
 use super::http;
 use super::settings;
@@ -26,24 +25,23 @@ pub type DeviceId = String;
 pub type SpotifyResponse = HttpResponse;
 
 pub fn parse_spotify_token(json: &str) -> (String, String, u64) {
-    let json_data = Json::from_str(&json).unwrap();
-    let obj = json_data.as_object().unwrap();
-    let access_token = obj.get("access_token").unwrap().as_string().unwrap();
-    let refresh_token = match obj.get("refresh_token") {
-        Some(j) => j.as_string().unwrap(),
+    let json_data: Value = serde_json::from_str(json).unwrap();
+    let access_token = json_data["access_token"].as_str().unwrap();
+    let refresh_token = match json_data.get("refresh_token") {
+        Some(j) => j.as_str().unwrap(),
         None => "",
     };
-    let expires_in = obj.get("expires_in").unwrap().as_u64().unwrap();
+    let expires_in = json_data["expires_in"].as_u64().unwrap();
     (String::from(access_token),String::from(refresh_token), expires_in)
 }
 
-//#[derive(RustcDecodable, RustcEncodable, Debug)]
-#[derive(RustcEncodable, Debug)]
+#[derive(Deserialize, Debug)]
 pub struct ConnectDevice {
     pub id: String,
     pub is_active: bool,
     pub is_restricted: bool,
     pub name: String,
+    #[serde(rename(deserialize = "type"))]
     pub device_type: String,
     pub volume_percent: Option<u32>
 }
@@ -54,31 +52,7 @@ impl fmt::Display for ConnectDevice {
     }
 }
 
-impl Decodable for ConnectDevice {
-    fn decode<D: Decoder>(d: &mut D) -> Result<ConnectDevice, D::Error> {
-        d.read_struct("ConnectDevice", 6, |d| {
-            let id = try!(d.read_struct_field("id", 0, |d| { d.read_str() }));
-            let is_active = try!(d.read_struct_field("is_active", 1, |d| { d.read_bool() }));
-            let is_restricted = try!(d.read_struct_field("is_restricted", 2, |d| { d.read_bool() }));
-            let name = try!(d.read_struct_field("name", 3, |d| { d.read_str() }));
-            let device_type = try!(d.read_struct_field("type", 4, |d| { d.read_str() }));
-            let volume_percent = try!(d.read_struct_field("volume_percent", 5, |d| {
-                match d.read_u32() {
-                    Ok(x) => Ok(Some(x)),
-                    // 'null' triggers a decode error.  Convert error to valid None:
-                    Err(_) => Ok(None),
-                }}));
-            Ok(ConnectDevice{ id: id,
-                              is_active: is_active,
-                              is_restricted: is_restricted,
-                              name: name,
-                              device_type: device_type,
-                              volume_percent: volume_percent})
-        })
-    }
-}
-
-#[derive(RustcDecodable, RustcEncodable)]
+#[derive(Deserialize)]
 pub struct ConnectDeviceList {
     pub devices: Vec<ConnectDevice>,
 }
@@ -109,19 +83,19 @@ impl iter::IntoIterator for ConnectDeviceList {
     }
 }
 
-#[derive(RustcDecodable, RustcEncodable, Debug)]
+#[derive(Deserialize, Debug)]
 pub struct ConnectPlaybackArtist {
     pub name: String,
     pub uri: String,
 }
 
-#[derive(RustcDecodable, RustcEncodable, Debug)]
+#[derive(Deserialize, Debug)]
 pub struct ConnectPlaybackAlbum {
     pub name: String,
     pub uri: String,
 }
 
-#[derive(RustcDecodable, RustcEncodable, Debug)]
+#[derive(Deserialize, Debug)]
 pub struct ConnectPlaybackItem {
     pub duration_ms: u32,
     pub name: String,
@@ -130,12 +104,12 @@ pub struct ConnectPlaybackItem {
     pub artists: Vec<ConnectPlaybackArtist>,
 }
 
-#[derive(RustcDecodable, RustcEncodable, Debug)]
+#[derive(Deserialize, Debug)]
 pub struct ConnectContext {
     uri: String,
 }
 
-#[derive(RustcDecodable, RustcEncodable, Debug)]
+#[derive(Deserialize, Debug)]
 pub struct PlayerState {
     pub timestamp: u64,
     pub device: ConnectDevice,
@@ -170,7 +144,7 @@ impl fmt::Display for PlayerState {
     }
 }
 
-#[derive(RustcDecodable, RustcEncodable)]
+#[derive(Serialize)]
 pub struct PlayContextOffset {
     pub position: Option<u32>,
     pub uri: Option<String>,
@@ -187,7 +161,7 @@ impl Clone for PlayContextOffset {
     }
 }
 
-#[derive(RustcDecodable, RustcEncodable)]
+#[derive(Serialize)]
 pub struct PlayContext {
     pub context_uri: Option<String>,
     pub uris: Option<Vec<String>>,
@@ -289,7 +263,7 @@ impl ToString for SpotifyRepeat {
     }
 }
 
-#[derive(RustcDecodable, RustcEncodable)]
+#[derive(Serialize)]
 struct DeviceIdList {
     device_ids: Vec<String>,
     play: bool,
@@ -473,7 +447,7 @@ impl<'a> SpotifyConnectr<'a> {
         let json_response = http::http(self.api.get().devices, "", "",
                                        http::HttpMethod::GET, self.bearer_token());
         match json_response.code {
-            Some(200) => Some(json::decode(&json_response.data.unwrap()).unwrap()),
+            Some(200) => serde_json::from_str(&json_response.data.unwrap()).unwrap(),
             Some(401) => {
                 warn!("Access token invalid.  Attempting to reauthenticate.");
                 self.refresh_access_token();
@@ -486,7 +460,7 @@ impl<'a> SpotifyConnectr<'a> {
         let json_response = http::http(self.api.get().player_state, "", "",
                                        http::HttpMethod::GET, self.bearer_token());
         match json_response.code {
-            Some(200) => Some(json::decode(&json_response.data.unwrap()).unwrap()),
+            Some(200) => serde_json::from_str(&json_response.data.unwrap()).unwrap(),
             Some(401) => {
                 warn!("Access token invalid.  Attempting to reauthenticate.");
                 self.refresh_access_token();
@@ -501,7 +475,7 @@ impl<'a> SpotifyConnectr<'a> {
     pub fn play(&self, context: Option<&PlayContext>) -> SpotifyResponse {
         let query = QueryString::new().add_opt("device_id", self.device.clone()).build();
         let body = match context {
-            Some(x) => json::encode(x).unwrap(),
+            Some(x) => serde_json::to_string(x).unwrap(),
             None => String::new(),
         };
         http::http(self.api.get().play, &query, &body, http::HttpMethod::PUT, self.bearer_token())
@@ -548,12 +522,12 @@ impl<'a> SpotifyConnectr<'a> {
     }
     pub fn transfer_multi(&mut self, devices: Vec<String>, play: bool) -> SpotifyResponse {
         let device = devices[0].clone();
-        let body = json::encode(&DeviceIdList {device_ids: devices, play: play}).unwrap();
+        let body = serde_json::to_string(&DeviceIdList {device_ids: devices, play: play}).unwrap();
         self.set_target_device(Some(device));
         http::http(self.api.get().player, "", &body, http::HttpMethod::PUT, self.bearer_token())
     }
     pub fn transfer(&mut self, device: String, play: bool) -> SpotifyResponse {
-        let body = json::encode(&DeviceIdList {device_ids: vec![device.clone()], play: play}).unwrap();
+        let body = serde_json::to_string(&DeviceIdList {device_ids: vec![device.clone()], play: play}).unwrap();
         self.set_target_device(Some(device));
         http::http(self.api.get().player, "", &body, http::HttpMethod::PUT, self.bearer_token())
     }

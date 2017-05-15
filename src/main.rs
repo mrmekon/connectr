@@ -20,15 +20,16 @@ use std::sync::mpsc::channel;
 
 extern crate time;
 
-extern crate rustc_serialize;
-use rustc_serialize::json;
+#[macro_use]
+extern crate serde_derive;
+extern crate serde_json;
 
 use std::process;
 
 // How often to refresh Spotify state (if nothing triggers a refresh earlier).
 pub const REFRESH_PERIOD: i64 = 30;
 
-#[derive(RustcDecodable, RustcEncodable, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 enum CallbackAction {
     SelectDevice,
     PlayPause,
@@ -38,7 +39,7 @@ enum CallbackAction {
     Preset,
 }
 
-#[derive(RustcDecodable, RustcEncodable, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 struct MenuCallbackCommand {
     action: CallbackAction,
     sender: u64,
@@ -114,7 +115,7 @@ fn fill_menu<T: TStatusBar>(app: &mut ConnectrApp, spotify: &mut connectr::Spoti
                 sender: sender,
                 data: is_playing.to_string(),
             };
-            let _ = tx.send(json::encode(&cmd).unwrap());
+            let _ = tx.send(serde_json::to_string(&cmd).unwrap());
         });
         app.menu.play = status.add_item(&play_str, cb, false);
 
@@ -124,7 +125,7 @@ fn fill_menu<T: TStatusBar>(app: &mut ConnectrApp, spotify: &mut connectr::Spoti
                 sender: sender,
                 data: String::new(),
             };
-            let _ = tx.send(json::encode(&cmd).unwrap());
+            let _ = tx.send(serde_json::to_string(&cmd).unwrap());
         });
         app.menu.next = status.add_item("Next", cb, false);
 
@@ -134,7 +135,7 @@ fn fill_menu<T: TStatusBar>(app: &mut ConnectrApp, spotify: &mut connectr::Spoti
                 sender: sender,
                 data: String::new(),
             };
-            let _ = tx.send(json::encode(&cmd).unwrap());
+            let _ = tx.send(serde_json::to_string(&cmd).unwrap());
         });
         app.menu.prev = status.add_item("Previous", cb, false);
     }
@@ -153,7 +154,7 @@ fn fill_menu<T: TStatusBar>(app: &mut ConnectrApp, spotify: &mut connectr::Spoti
                     sender: sender,
                     data: uri.to_owned(),
                 };
-                let _ = tx.send(json::encode(&cmd).unwrap());
+                let _ = tx.send(serde_json::to_string(&cmd).unwrap());
             });
             let item = status.add_item(&name.clone(), cb, false);
             app.menu.preset.push(item);
@@ -174,7 +175,7 @@ fn fill_menu<T: TStatusBar>(app: &mut ConnectrApp, spotify: &mut connectr::Spoti
                 sender: sender,
                 data: id.to_owned(),
             };
-            let _ = tx.send(json::encode(&cmd).unwrap());
+            let _ = tx.send(serde_json::to_string(&cmd).unwrap());
         });
         let item = status.add_item(&dev.name, cb, dev.is_active);
         if dev.is_active {
@@ -202,7 +203,7 @@ fn fill_menu<T: TStatusBar>(app: &mut ConnectrApp, spotify: &mut connectr::Spoti
                     sender: sender,
                     data: i.to_string(),
                 };
-                let _ = tx.send(json::encode(&cmd).unwrap());
+                let _ = tx.send(serde_json::to_string(&cmd).unwrap());
             });
             let item = status.add_item(&vol_str, cb, i == cur_volume);
             app.menu.volume.push(item);
@@ -408,7 +409,7 @@ fn main() {
         spotify.await_once(false);
         if let Ok(s) = rx.try_recv() {
             println!("Received {}", s);
-            let cmd: MenuCallbackCommand = json::decode(&s).unwrap();
+            let cmd: MenuCallbackCommand = serde_json::from_str(&s).unwrap();
             handle_callback(&mut app, &mut spotify, &mut status, &cmd);
             refresh_time_utc = now + 1;
         }
