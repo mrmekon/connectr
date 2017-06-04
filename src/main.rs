@@ -168,12 +168,16 @@ fn fill_menu<T: TStatusBar>(app: &mut ConnectrApp, spotify: &mut connectr::Spoti
     let mut cur_volume: u32 = 0;
     for dev in *device_list {
         println!("{}", dev);
-        let id = dev.id.clone();
+        let id = match dev.id {
+            Some(ref id) => id.clone(),
+            None => "".to_string(),
+        };
+        let cb_id = id.clone();
         let cb: NSCallback = Box::new(move |sender, tx| {
             let cmd = MenuCallbackCommand {
                 action: CallbackAction::SelectDevice,
                 sender: sender,
-                data: id.to_owned(),
+                data: cb_id.to_owned(),
             };
             let _ = tx.send(serde_json::to_string(&cmd).unwrap());
         });
@@ -186,7 +190,7 @@ fn fill_menu<T: TStatusBar>(app: &mut ConnectrApp, spotify: &mut connectr::Spoti
                 None => 100,
             }
         }
-        app.menu.device.push((item, dev.id.clone()));
+        app.menu.device.push((item, id));
     }
     println!("");
 

@@ -37,7 +37,7 @@ pub fn parse_spotify_token(json: &str) -> (String, String, u64) {
 
 #[derive(Deserialize, Debug)]
 pub struct ConnectDevice {
-    pub id: String,
+    pub id: Option<String>,
     pub is_active: bool,
     pub is_restricted: bool,
     pub name: String,
@@ -48,7 +48,11 @@ pub struct ConnectDevice {
 
 impl fmt::Display for ConnectDevice {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{:<40} <{}>", self.name, self.id)
+        let id = match self.id {
+            Some(ref id) => id,
+            None => "",
+        };
+        write!(f, "{:<40} <{}>", self.name, id)
     }
 }
 
