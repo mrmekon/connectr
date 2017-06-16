@@ -1,3 +1,6 @@
 [submodule "deps/systray-rs"]
 	path = deps/systray-rs
 	url = https://github.com/mrmekon/systray-rs
+[submodule "deps/timer.rs"]
+	path = deps/timer.rs
+	url = git@github.com:mrmekon/timer.rs.git

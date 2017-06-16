@@ -3,7 +3,9 @@ mod test;
 
 extern crate time;
 extern crate timer;
+
 extern crate chrono;
+use self::chrono::{DateTime, Local, UTC, TimeZone, Datelike, Timelike, Weekday};
 
 use std::fmt;
 use std::iter;
@@ -270,6 +272,22 @@ impl QueryString {
     }
 }
 
+#[derive(PartialEq)]
+pub enum AlarmRepeat {
+    Daily,
+    Weekdays,
+    Weekends,
+}
+
+pub struct AlarmEntry {
+    pub time: String,
+    pub repeat: AlarmRepeat,
+    pub context: PlayContext,
+    pub device: DeviceId,
+    #[cfg(test)]
+    pub now: Option<DateTime<Local>>,
+}
+
 pub enum SpotifyRepeat {
     Off,
     Track,
@@ -296,6 +314,13 @@ struct DeviceIdList {
     play: bool,
 }
 
+struct AlarmTimer {
+    entry: AlarmEntry,
+    timer: timer::Timer,
+    guard: timer::Guard,
+    channel: Receiver<()>,
+}
+
 pub struct SpotifyConnectr<'a> {
     api: SpotifyEndpoints<'a>,
     settings: settings::Settings,
@@ -308,6 +333,8 @@ pub struct SpotifyConnectr<'a> {
     refresh_timer: timer::Timer,
     refresh_timer_guard: Option<timer::Guard>,
     refresh_timer_channel: Option<Receiver<()>>,
+
+    alarms: Vec<AlarmTimer>,
 }
 impl<'a> Default for SpotifyConnectr<'a> {
     fn default() -> Self {
@@ -353,7 +380,9 @@ impl<'a> SpotifyConnectrBuilder<'a> {
                               device: None,
                               refresh_timer: timer::Timer::new(),
                               refresh_timer_guard: None,
-                              refresh_timer_channel: None})
+                              refresh_timer_channel: None,
+                              alarms: Vec::new(),
+        })
     }
     #[cfg(test)]
     fn with_api(&mut self, api: SpotifyEndpoints<'a>) -> &mut Self {
@@ -393,6 +422,63 @@ impl<'a> SpotifyConnectr<'a> {
             x if x > 0 => x as u64,
             _ => 0,
         }
+    }
+    fn alarm_current_time(&self, entry: &AlarmEntry) -> DateTime<Local> {
+        // Allow unit tests to override 'now', so days can be deterministic
+        #[cfg(test)]
+        return match entry.now {
+            Some(dt) => dt.clone(),
+            None => Local::now(),
+        };
+        Local::now()
+    }
+    fn next_alarm_datetime(&self, entry: &AlarmEntry) -> Result<DateTime<Local>, String> {
+        let now = self.alarm_current_time(&entry);
+        let format_12h = "%I:%M %p";
+        let format_24h = "%H:%M";
+        let alarm_time = match time::strptime(&entry.time, format_24h) {
+            Ok(t) => t,
+            _ => return Err("Could not parse alarm clock time.".to_string()),
+        };
+        let mut alarm = self.alarm_current_time(&entry)
+            .with_hour(alarm_time.tm_hour as u32).ok_or("Invalid hour")?
+            .with_minute(alarm_time.tm_min as u32).ok_or("Invalid minute")?
+            .with_second(0).ok_or("Invalid second")?
+            .with_nanosecond(0).ok_or("Invalid nanosecond")?;
+        // Increment by one day if the current hour has already passed
+        if alarm < now {
+            alarm = alarm + chrono::Duration::days(1);
+        }
+        // Increment until a day is found that matches the alarm repeat options
+        loop {
+            let is_weekday = match alarm.weekday() {
+                Weekday::Sat | Weekday::Sun => false,
+                _ => true,
+            };
+            if entry.repeat == AlarmRepeat::Daily ||
+                (is_weekday && entry.repeat == AlarmRepeat::Weekdays) ||
+                (!is_weekday && entry.repeat == AlarmRepeat::Weekends) {
+                    break;
+            }
+            alarm = alarm + chrono::Duration::days(1);
+        }
+        Ok(alarm)
+    }
+    pub fn schedule_alarm(&mut self, entry: AlarmEntry) -> Result<DateTime<Local>, ()> {
+        let alarm = self.next_alarm_datetime(&entry).unwrap();
+        let (tx, rx) = channel::<>();
+        let timer = timer::Timer::new();
+        let closure = move || { tx.send(()).unwrap(); };
+        let guard = timer.schedule_with_date(alarm, closure);
+        let duration = alarm.signed_duration_since(Local::now());
+        info!("Alarm set for {} hours from now", duration.num_hours());
+        self.alarms.push(AlarmTimer {
+            entry: entry,
+            timer: timer,
+            guard: guard,
+            channel: rx,
+        });
+        Ok(alarm)
     }
     fn schedule_token_refresh(&mut self) -> Result<(), ()> {
         match self.expire_utc {
@@ -444,6 +530,20 @@ impl<'a> SpotifyConnectr<'a> {
             true  => Box::new(move |rx| { match rx.recv() { Ok(_) => true, Err(_) => false } }),
             false => Box::new(move |rx| { match rx.try_recv() { Ok(_) => true, Err(_) => false } }),
         };
+
+        // Get list of which alarms have expired
+        let expired = self.alarms.iter().enumerate()
+            .map(|(idx, alarm)| alarm.channel.try_recv().is_ok()).collect::<Vec<_>>();
+        // For each expired alarm, remove it, execute it, and reschedule it
+        for (idx, exp) in expired.iter().enumerate() {
+            if *exp {
+                let old_alarm = self.alarms.swap_remove(idx);
+                self.set_target_device(Some(old_alarm.entry.device.clone()));
+                self.play(Some(&old_alarm.entry.context));
+                self.schedule_alarm(old_alarm.entry);
+            }
+        }
+
         let need_refresh = match self.refresh_timer_channel.as_ref() {
             Some(rx) => recv_fn(rx),
             _ => false,
