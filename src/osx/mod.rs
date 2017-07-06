@@ -1,5 +1,13 @@
 pub mod rustnsobject;
 
+#[cfg(feature = "mac_touchbar")]
+mod touchbar;
+// TODO: Wrap the Objc class in a Rust struct
+#[cfg(feature = "mac_touchbar")]
+use self::touchbar::ObjcAppDelegate;
+#[cfg(feature = "mac_touchbar")]
+use self::objc_foundation::INSObject;
+
 extern crate objc;
 extern crate objc_foundation;
 extern crate cocoa;
@@ -53,12 +61,24 @@ pub struct OSXStatusBar {
     run_date: *mut objc::runtime::Object,
 }
 
+#[cfg(feature = "mac_touchbar")]
+fn create_touchbar_delegate(app: *mut Object) -> Id<ObjcAppDelegate, objc_id::Shared> {
+    unsafe {
+        info!("MacOS Touch Bar support enabled.  Initializing.");
+        let delegate = touchbar::ObjcAppDelegate::new().share();
+        msg_send![app, setDelegate:delegate.clone()];
+        delegate
+    }
+}
+
 impl TStatusBar for OSXStatusBar {
     type S = OSXStatusBar;
     fn new(tx: Sender<String>) -> OSXStatusBar {
         let mut bar;
         unsafe {
             let app = NSApp();
+            #[cfg(feature = "mac_touchbar")]
+            let delegate = create_touchbar_delegate(app);
             let status_bar = NSStatusBar::systemStatusBar(nil);
             let date_cls = Class::get("NSDate").unwrap();
             bar = OSXStatusBar {
@@ -96,8 +116,11 @@ impl TStatusBar for OSXStatusBar {
             // prefer color, but that should maybe be configurable.
             let img = NSString::alloc(nil).init_str(&img_path);
             let icon = NSImage::alloc(nil).initWithContentsOfFile_(img);
-            //let _ = msg_send![icon, setTemplate: YES]; // enable to make icon white
+            #[cfg(feature = "mac_white_icon")]
+            let _ = msg_send![icon, setTemplate: YES]; // enable to make icon white
             bar.status_bar_item.button().setImage_(icon);
+            #[cfg(feature = "mac_touchbar")]
+            msg_send![delegate, setIcon: icon]; // let touchbar use the same
             let _ = msg_send![img, release];
             let _ = msg_send![icon, release];
 
@@ -119,6 +142,8 @@ impl TStatusBar for OSXStatusBar {
                 }
             ));
             let _: () = msg_send![app, finishLaunching];
+            #[cfg(feature = "mac_touchbar")]
+            let _: () = msg_send![delegate, applicationDidFinishLaunching: 0];
         }
         bar
     }

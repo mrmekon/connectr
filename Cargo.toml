@@ -27,6 +27,8 @@ panic = 'unwind'
 
 [features]
 verbose_http = []
+mac_touchbar = []
+mac_white_icon = []
 
 [dependencies]
 curl = "0.4.6"
