@@ -1,12 +1,17 @@
-pub mod rustnsobject;
+mod rustnsobject;
 
 #[cfg(feature = "mac_touchbar")]
 mod touchbar;
-// TODO: Wrap the Objc class in a Rust struct
 #[cfg(feature = "mac_touchbar")]
-use self::touchbar::ObjcAppDelegate;
-#[cfg(feature = "mac_touchbar")]
-use self::objc_foundation::INSObject;
+use self::touchbar::{Touchbar, TouchbarTrait};
+#[cfg(not(feature = "mac_touchbar"))]
+struct Touchbar {}
+#[cfg(not(feature = "mac_touchbar"))]
+impl Touchbar {
+    fn alloc() -> Touchbar { Touchbar {} }
+    fn set_icon(&self, _: *mut Object) {}
+    fn enable(&self) {}
+}
 
 extern crate objc;
 extern crate objc_foundation;
@@ -51,6 +56,7 @@ pub struct OSXStatusBar {
     app: *mut objc::runtime::Object,
     status_bar_item: *mut objc::runtime::Object,
     menu_bar: *mut objc::runtime::Object,
+    touchbar: Touchbar,
 
     // Run loop state
     // Keeping these in persistent state instead of recalculating saves quite a
@@ -61,24 +67,12 @@ pub struct OSXStatusBar {
     run_date: *mut objc::runtime::Object,
 }
 
-#[cfg(feature = "mac_touchbar")]
-fn create_touchbar_delegate(app: *mut Object) -> Id<ObjcAppDelegate, objc_id::Shared> {
-    unsafe {
-        info!("MacOS Touch Bar support enabled.  Initializing.");
-        let delegate = touchbar::ObjcAppDelegate::new().share();
-        msg_send![app, setDelegate:delegate.clone()];
-        delegate
-    }
-}
-
 impl TStatusBar for OSXStatusBar {
     type S = OSXStatusBar;
     fn new(tx: Sender<String>) -> OSXStatusBar {
         let mut bar;
         unsafe {
             let app = NSApp();
-            #[cfg(feature = "mac_touchbar")]
-            let delegate = create_touchbar_delegate(app);
             let status_bar = NSStatusBar::systemStatusBar(nil);
             let date_cls = Class::get("NSDate").unwrap();
             bar = OSXStatusBar {
@@ -86,6 +80,7 @@ impl TStatusBar for OSXStatusBar {
                 status_bar_item: status_bar.statusItemWithLength_(NSVariableStatusItemLength),
                 menu_bar: NSMenu::new(nil),
                 object: NSObj::alloc(tx).setup(),
+                touchbar: Touchbar::alloc(),
                 pool: Cell::new(nil),
                 run_count: Cell::new(0),
                 run_mode: NSString::alloc(nil).init_str("kCFRunLoopDefaultMode"),
@@ -119,8 +114,7 @@ impl TStatusBar for OSXStatusBar {
             #[cfg(feature = "mac_white_icon")]
             let _ = msg_send![icon, setTemplate: YES]; // enable to make icon white
             bar.status_bar_item.button().setImage_(icon);
-            #[cfg(feature = "mac_touchbar")]
-            msg_send![delegate, setIcon: icon]; // let touchbar use the same
+            bar.touchbar.set_icon(icon);
             let _ = msg_send![img, release];
             let _ = msg_send![icon, release];
 
@@ -142,8 +136,7 @@ impl TStatusBar for OSXStatusBar {
                 }
             ));
             let _: () = msg_send![app, finishLaunching];
-            #[cfg(feature = "mac_touchbar")]
-            let _: () = msg_send![delegate, applicationDidFinishLaunching: 0];
+            bar.touchbar.enable()
         }
         bar
     }

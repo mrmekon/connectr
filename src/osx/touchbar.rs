@@ -17,9 +17,9 @@ use objc::runtime::{Class, Object, Sel};
 use self::objc_foundation::{INSObject, NSObject, INSArray, NSArray, INSString};
 use self::cocoa::base::{nil, YES};
 use self::cocoa::foundation::NSString;
-
-//use self::objc_id::Id;
-//use self::objc_id::Shared;
+use self::cocoa::appkit::NSApp;
+use self::objc_id::Id;
+use self::objc_id::Shared;
 
 #[link(name = "DFRFoundation", kind = "framework")]
 extern {
@@ -27,16 +27,46 @@ extern {
     pub fn DFRElementSetControlStripPresenceForIdentifier(n: *mut Object, x: i8);
 }
 
-//pub struct RustTouchbarDelegate {
-//    pub objc: Id<ObjcAppDelegate, Shared>,
-//}
-//
-//impl RustTouchbarDelegate {
+pub struct RustTouchbarDelegateWrapper {
+    objc: Id<ObjcAppDelegate, Shared>,
+}
+
+pub type Touchbar = Box<RustTouchbarDelegateWrapper>;
+
+pub trait TouchbarTrait {
+    fn alloc() -> Touchbar;
+    fn set_icon(&self, icon: *mut Object);
+    fn enable(&self);
+}
+
+impl TouchbarTrait for Touchbar {
+    fn alloc() -> Touchbar {
+        let objc = ObjcAppDelegate::new().share();
+        let rust = Box::new(RustTouchbarDelegateWrapper {
+            objc: objc.clone(),
+        });
+        unsafe {
+            let ptr: u64 = &*rust as *const RustTouchbarDelegateWrapper as u64;
+            let _ = msg_send![rust.objc, setRustWrapper: ptr];
+        }
+        return rust
+    }
+    fn set_icon(&self, icon: *mut Object) {
+        unsafe { let _:() = msg_send![self.objc, setIcon: icon]; }
+    }
+    fn enable(&self) {
+        unsafe {
+            let app = NSApp();
+            let _: () = msg_send![app, setDelegate: objc];
+            let _: () = msg_send![self.objc, applicationDidFinishLaunching: 0];
+        }
+    }
+
 //    pub fn add_button() {}
 //    pub fn add_quit_button() {}
 //    pub fn add_label() {}
 //    pub fn add_slider() {}
-//}
+}
 
 pub enum ObjcAppDelegate {}
 impl ObjcAppDelegate {}
@@ -50,10 +80,14 @@ impl INSObject for ObjcAppDelegate {
         OBJC_SUBCLASS_REGISTER_CLASS.call_once(|| {
             let superclass = NSObject::class();
             let mut decl = ClassDecl::new("ObjcAppDelegate", superclass).unwrap();
+            decl.add_ivar::<u64>("_rust_wrapper");
             decl.add_ivar::<u64>("_groupbar");
             decl.add_ivar::<u64>("_groupId");
             decl.add_ivar::<u64>("_icon");
 
+            extern fn objc_set_rust_wrapper(this: &mut Object, _cmd: Sel, ptr: u64) {
+                unsafe {this.set_ivar("_rust_wrapper", ptr);}
+            }
             extern fn objc_group_touch_bar(this: &mut Object, _cmd: Sel) -> u64 {
                 unsafe {*this.get_ivar("_groupbar")}
             }
@@ -204,6 +238,9 @@ impl INSObject for ObjcAppDelegate {
 
                 let f: extern fn(&mut Object, Sel, u64) = objc_set_icon;
                 decl.add_method(sel!(setIcon:), f);
+
+                let f: extern fn(&mut Object, Sel, u64) = objc_set_rust_wrapper;
+                decl.add_method(sel!(setRustWrapper:), f);
             }
 
             decl.register();
