@@ -90,8 +90,6 @@ impl NSObjTrait for NSObj {
     }
 }
 
-pub type NSObjCallback<T> = Box<Fn(&mut T, u64)>;
-
 impl NSObjCallbackTrait for NSObj {
     fn set_value(&mut self, key: u64, val: NSCallback) {
         self.map.insert(key, val);
