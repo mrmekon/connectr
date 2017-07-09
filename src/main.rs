@@ -37,6 +37,7 @@ enum CallbackAction {
     SkipPrev,
     Volume,
     Preset,
+    Debug,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -215,6 +216,17 @@ fn fill_menu<T: TStatusBar>(app: &mut ConnectrApp, spotify: &mut connectr::Spoti
         }
     }
     status.add_separator();
+    let cb: NSCallback = Box::new(move |sender, tx| {
+        let cmd = MenuCallbackCommand {
+            action: CallbackAction::Debug,
+            sender: sender,
+            data: String::new(),
+        };
+        let _ = tx.send(serde_json::to_string(&cmd).unwrap());
+    });
+    status.add_item("Fuck With Touchbar", cb, false);
+    
+    status.add_separator();
     status.add_quit("Exit");
 }
 
@@ -303,6 +315,9 @@ fn handle_callback<T: TStatusBar>(app: &mut ConnectrApp, spotify: &mut connectr:
             }
             status.sel_item(cmd.sender);
         }
+        CallbackAction::Debug => {
+            status.touchbar();
+        }  
     }
 }
 
