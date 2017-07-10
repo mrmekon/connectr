@@ -40,12 +40,22 @@ fn print_nsstring(str: *mut Object) {
     }
 }
 
+pub trait TScrubberData {
+    fn count(&self, item: ItemId) -> u32;
+    fn text(&self, item: ItemId, idx: u32) -> String;
+    fn width(&self, item: ItemId, idx: u32) -> u32;
+    fn touch(&self, item: ItemId, idx: u32);
+}
+
+//use std::rc::Rc;
+
 struct Scrubber {
+    //struct Scrubber<T> where T: TScrubberData {
+    //data: Rc<T>,
     count_cb: ScrubberCountFn,
     text_cb: ScrubberTextFn,
     width_cb: ScrubberWidthFn,
     touch_cb: ScrubberTouchFn,
-    context: *const u32,
     _item: ItemId,
     _scrubber: ItemId,
     _ident: Ident,
@@ -72,19 +82,25 @@ pub trait TouchbarTrait {
     fn create_label(&mut self) -> ItemId;
     fn update_label(&mut self, label_id: ItemId);
     fn create_text_scrubber(&mut self,
-                            context: *const u32,
                             count_fn: ScrubberCountFn,
                             text_fn: ScrubberTextFn,
                             width_fn: ScrubberWidthFn,
                             touch_fn: ScrubberTouchFn) -> ItemId;
     fn select_scrubber_item(&mut self, scrub_id: ItemId, index: u32);
+    fn refresh_scrubber(&mut self, scrub_id: ItemId);
     fn create_button(&mut self, image: *mut Object, text: *mut Object, cb: ButtonCb) -> ItemId;
 }
 
-pub type ScrubberCountFn = fn(*const u32, ItemId) -> u32;
-pub type ScrubberTextFn = fn(*const u32, ItemId, u32) -> String;
-pub type ScrubberWidthFn = fn(*const u32, ItemId, u32) -> u32;
-pub type ScrubberTouchFn = fn(*const u32, ItemId, u32);
+//pub type ScrubberCountFn = fn(*const u32, ItemId) -> u32;
+//pub type ScrubberTextFn = fn(*const u32, ItemId, u32) -> String;
+//pub type ScrubberWidthFn = fn(*const u32, ItemId, u32) -> u32;
+//pub type ScrubberTouchFn = fn(*const u32, ItemId, u32);
+
+pub type ScrubberCountFn = Box<Fn(ItemId) -> u32>;
+pub type ScrubberTextFn = Box<Fn(ItemId, u32) -> String>;
+pub type ScrubberWidthFn = Box<Fn(ItemId, u32) -> u32>;
+pub type ScrubberTouchFn = Box<Fn(ItemId, u32)>;
+
 
 impl RustTouchbarDelegateWrapper {
     fn generate_ident(&mut self) -> u64 {
@@ -235,7 +251,6 @@ impl TouchbarTrait for Touchbar {
         }
     }
     fn create_text_scrubber(&mut self,
-                            context: *const u32,
                             count_fn: ScrubberCountFn,
                             text_fn: ScrubberTextFn,
                             width_fn: ScrubberWidthFn,
@@ -271,7 +286,6 @@ impl TouchbarTrait for Touchbar {
                 count_cb: count_fn,
                 width_cb: width_fn,
                 touch_cb: touch_fn,
-                context: context,
                 _ident: ident as u64,
                 _item: item as u64,
                 _scrubber: scrubber as u64,
@@ -285,6 +299,15 @@ impl TouchbarTrait for Touchbar {
             let item = scrub_id as *mut Object;
             let scrubber: *mut Object = msg_send![item, view];
             let _:() = msg_send![scrubber, setSelectedIndex: index];
+        }
+    }
+    fn refresh_scrubber(&mut self, scrub_id: ItemId) {
+        unsafe {
+            let item = scrub_id as *mut Object;
+            let scrubber: *mut Object = msg_send![item, view];
+            //let layout: *mut Object = msg_send![scrubber, scrubberLayout];
+            //let _:() = msg_send![layout, invalidateLayout];
+            let _:() = msg_send![scrubber, reloadData];
         }
     }
     fn create_button(&mut self, image: *mut Object, text: *mut Object, cb: ButtonCb) -> ItemId {
@@ -377,7 +400,7 @@ impl INSObject for ObjcAppDelegate {
                     let scrubber = scrub as *mut Object;
                     let scrub_struct = wrapper.scrubber_obj_map.get(&scrub).unwrap();
                     let item = scrub_struct._item;
-                    (scrub_struct.count_cb)(scrub_struct.context, item)
+                    (scrub_struct.count_cb)(item)
                 }
             }
             extern fn objc_scrubber_view_for_item_at_index(this: &mut Object, _cmd: Sel,
@@ -392,7 +415,7 @@ impl INSObject for ObjcAppDelegate {
                     let ident = scrub_struct._ident as *mut Object;
                     let view: *mut Object = msg_send![scrubber,
                                                       makeItemWithIdentifier:ident owner:nil];
-                    let text = (scrub_struct.text_cb)(scrub_struct.context, item, idx);
+                    let text = (scrub_struct.text_cb)(item, idx);
                     let text_field: *mut Object = msg_send![view, textField];
                     let objc_text: *mut Object = NSString::alloc(nil).init_str(&text);
                     let _:() = msg_send![text_field, setStringValue: objc_text];
@@ -410,13 +433,21 @@ impl INSObject for ObjcAppDelegate {
                     let scrub_struct = wrapper.scrubber_obj_map.get(&scrub).unwrap();
                     let item = scrub_struct._item;
                     info!("scrubber item size call CB");
-                    let width = (scrub_struct.width_cb)(scrub_struct.context, item, idx);
+                    let width = (scrub_struct.width_cb)(item, idx);
                     NSSize::new(width as f64, 30.)
                 }
             }
             extern fn objc_scrubber_did_select_item_at_index(this: &mut Object, _cmd: Sel,
-                                                             _scrub: u64, _idx: u32) {
+                                                             scrub: u64, idx: u32) {
                 info!("scrubber selected");
+                unsafe {
+                    let ptr: u64 = *this.get_ivar("_rust_wrapper");
+                    let wrapper = &mut *(ptr as *mut RustTouchbarDelegateWrapper);
+                    let scrubber = scrub as *mut Object;
+                    let scrub_struct = wrapper.scrubber_obj_map.get(&scrub).unwrap();
+                    let item = scrub_struct._item;
+                    (scrub_struct.touch_cb)(item, idx);
+                }
             }
             extern fn objc_popbar(this: &mut Object, _cmd: Sel, sender: u64) {
                 info!("Popbar push: {}", sender as u64);
