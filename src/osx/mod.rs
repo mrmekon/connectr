@@ -71,7 +71,6 @@ pub struct OSXStatusBar {
     run_date: *mut objc::runtime::Object,
 
     label: Cell<u64>,
-    devices: Vec<String>,
     scrubber: Rc<Scrubber>,
 }
 
@@ -137,7 +136,6 @@ impl TStatusBar for OSXStatusBar {
                 run_mode: NSString::alloc(nil).init_str("kCFRunLoopDefaultMode"),
                 run_date: msg_send![date_cls, distantPast],
                 label: Cell::new(0),
-                devices: Vec::new(),
                 scrubber: scrubber.clone(),
             };
             // Don't become foreground app on launch
@@ -202,24 +200,7 @@ impl TStatusBar for OSXStatusBar {
             let b3id = bar.touchbar.create_button(nil, text, Box::new(move |_| {}));
             bar.touchbar.add_items_to_bar(popid, vec![b3id]);
 
-            for item in ITEMS {
-                bar.devices.push(item.to_string());
-            }
-            info!("devices: {:?}", bar.devices);
-            info!("devices: {:?}", (&bar.devices) as *const Vec<String>);
-            let bar_ptr = &bar as *const OSXStatusBar as *const u32;
-            info!("bar ptr: {:?}", bar_ptr);
-            //let testfn: Box<FnMut()> = Box::new(bar.test);
-            let scrubber1 = scrubber.clone();
-            let scrubber2 = scrubber.clone();
-            let scrubber3 = scrubber.clone();
-            let scrubber4 = scrubber.clone();
-            let s1id = bar.touchbar.create_text_scrubber(
-                Box::new(move |s|   { scrubber1.count(s) }),
-                Box::new(move |s,i| { scrubber2.text(s,i) }),
-                Box::new(move |s,i| { scrubber3.width(s,i) }),
-                Box::new(move |s,i| { scrubber4.touch(s,i) }),
-            );
+            let s1id = bar.touchbar.create_text_scrubber(scrubber.clone());
             bar.touchbar.select_scrubber_item(s1id, 1);
 
             let l1id = bar.touchbar.create_label();
