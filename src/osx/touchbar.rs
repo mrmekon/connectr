@@ -63,6 +63,7 @@ pub struct RustTouchbarDelegateWrapper {
     bar_obj_map: BTreeMap<ItemId, Ident>,
     control_obj_map: BTreeMap<ItemId, ItemId>,
     scrubber_obj_map: BTreeMap<ItemId, Scrubber>,
+    button_cb_map: BTreeMap<ItemId, ButtonCb>,
 }
 
 pub type Touchbar = Box<RustTouchbarDelegateWrapper>;
@@ -116,6 +117,7 @@ impl TouchbarTrait for Touchbar {
             bar_obj_map: BTreeMap::<ItemId, Ident>::new(),
             control_obj_map: BTreeMap::<ItemId, ItemId>::new(),
             scrubber_obj_map: BTreeMap::<ItemId, Scrubber>::new(),
+            button_cb_map: BTreeMap::<ItemId, ButtonCb>::new(),
         });
         unsafe {
             let ptr: u64 = &*rust as *const RustTouchbarDelegateWrapper as u64;
@@ -290,9 +292,10 @@ impl TouchbarTrait for Touchbar {
         unsafe {
             let item = scrub_id as *mut Object;
             let scrubber: *mut Object = msg_send![item, view];
-            //let layout: *mut Object = msg_send![scrubber, scrubberLayout];
-            //let _:() = msg_send![layout, invalidateLayout];
+            let sel_idx: u32 = msg_send![scrubber, selectedIndex];
             let _:() = msg_send![scrubber, reloadData];
+            // reload clears the selected item.  re-select it.
+            let _:() = msg_send![scrubber, setSelectedIndex: sel_idx];
         }
     }
     fn create_button(&mut self, image: *mut Object, text: *mut Object, cb: ButtonCb) -> ItemId {
@@ -331,6 +334,7 @@ impl TouchbarTrait for Touchbar {
 
             self.bar_obj_map.insert(item as u64, ident as u64);
             self.control_obj_map.insert(btn as u64, item as u64);
+            self.button_cb_map.insert(btn as u64, cb);
             item as u64
         }
     }
@@ -481,9 +485,14 @@ impl INSObject for ObjcAppDelegate {
                 //
                 //}
             }
-            extern fn objc_button(_this: &mut Object, _cmd: Sel, _sender: u64) {
-                let sender = _sender as *mut Object;
+            extern fn objc_button(this: &mut Object, _cmd: Sel, sender: u64) {
                 info!("Button push: {}", sender as u64);
+                unsafe {
+                    let ptr: u64 = *this.get_ivar("_rust_wrapper");
+                    let wrapper = &mut *(ptr as *mut RustTouchbarDelegateWrapper);
+                    let ref cb = *wrapper.button_cb_map.get(&sender).unwrap();
+                    cb(sender);
+                }
                 //unsafe {
                     //let slider: *mut Object = msg_send![sender, slider];
                     //let val: u32 = msg_send![slider, intValue];
