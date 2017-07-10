@@ -3,7 +3,7 @@ mod rustnsobject;
 #[cfg(feature = "mac_touchbar")]
 mod touchbar;
 #[cfg(feature = "mac_touchbar")]
-use self::touchbar::{Touchbar, TouchbarTrait};
+use self::touchbar::{Touchbar, TouchbarTrait, TScrubberData};
 #[cfg(not(feature = "mac_touchbar"))]
 struct Touchbar {}
 #[cfg(not(feature = "mac_touchbar"))]
@@ -39,9 +39,13 @@ use self::cocoa::appkit::{NSApp,
 use self::rustnsobject::{NSObj, NSObjTrait, NSObjCallbackTrait};
 
 use std::sync::mpsc::Sender;
+use std::sync::mpsc::channel;
 
 use std::ptr;
+use std::rc::Rc;
 use std::cell::Cell;
+use std::cell::RefCell;
+use std::borrow::BorrowMut;
 use std::ffi::CStr;
 use std::thread::sleep;
 use std::time::Duration;
@@ -68,50 +72,41 @@ pub struct OSXStatusBar {
 
     label: Cell<u64>,
     devices: Vec<String>,
+    scrubber: Rc<Scrubber>,
 }
 
 const ITEMS: &'static [&'static str] = &["a rather longer first one", "one","two","much longer than two","three", "seventeen", "A speaker with a very long name is not an impossible thing."];
 
-fn scrub_count(context: *const u32, item: touchbar::ItemId) -> u32 {
-    info!("MOD GOT SCRUBBER COUNT REQUEST");
-    let context = context as *const OSXStatusBar;
-    unsafe {
-        (*context).devices.len() as u32
-    } 
+struct Scrubber {
+    devices: RefCell<Vec<String>>,
+    touch_tx: Sender<(touchbar::ItemId,u32)>,
 }
-fn scrub_text(context: *const u32, item: touchbar::ItemId, idx: u32) -> String {
-    let context = context as *const OSXStatusBar;
-    unsafe {
-        info!("MOD GOT SCRUBBER TEXT REQUEST {}", idx);
-        //"froop".to_string()
-        (*context).devices[idx as usize].to_string()
+
+impl TScrubberData for Scrubber {
+    fn count(&self, item: touchbar::ItemId) -> u32 {
+        let dev = self.devices.borrow();
+        let len = (*dev).len();
+        info!("MOD GOT SCRUBBER COUNT REQUEST {}", len);
+        self.devices.borrow().len() as u32
     }
-}
-fn scrub_width(context: *const u32, item: touchbar::ItemId, idx: u32) -> u32 {
-    info!("scrub_width {} {:?}", idx, context);
-    // 10px per character + some padding seems to work nicely for the default
-    // font.  no idea what it's like on other machines.  does the touchbar
-    // font change? ¯\_(ツ)_/¯
-    unsafe {
-        let context = context as *const OSXStatusBar;
-        info!("context: {:?}", context);
-        let context: &OSXStatusBar = &*context;
-        info!("get len");
-        let devices: &Vec<String> = &context.devices;
-        info!("got devices");
-        info!("devices ptr: {:?}", devices as *const Vec<String>);
-        info!("devices len: {}", devices.len());
-        info!("{:?}", devices);
-        let ref s = (*context).devices[idx as usize];
-        info!("get string {}", s);
-        let len = s.len() as u32;
-        info!("got len {}", len);
+    fn text(&self, item: touchbar::ItemId, idx: u32) -> String {
+        info!("MOD GOT SCRUBBER TEXT REQUEST {}", idx);
+        self.devices.borrow()[idx as usize].to_string()
+    }
+    fn width(&self, item: touchbar::ItemId, idx: u32) -> u32 {
+        info!("scrub_width {}", idx);
+        // 10px per character + some padding seems to work nicely for the default
+        // font.  no idea what it's like on other machines.  does the touchbar
+        // font change? ¯\_(ツ)_/¯
+        let len = self.devices.borrow()[idx as usize].len() as u32;
         let width = len * 8 + 20;
         info!("Width for {}: {}", len, width);
         width
     }
-}
-fn scrub_touch(context: *const u32, item: touchbar::ItemId, idx: u32) {
+    fn touch(&self, item: touchbar::ItemId, idx: u32) {
+        info!("scrub touch: {}", idx);
+        self.touch_tx.send((item, idx));
+    }
 }
 
 impl TStatusBar for OSXStatusBar {
@@ -120,8 +115,17 @@ impl TStatusBar for OSXStatusBar {
         let mut bar;
         unsafe {
             let app = NSApp();
+            let (touch_tx,touch_rx) = channel::<(touchbar::ItemId,u32)>();
             let status_bar = NSStatusBar::systemStatusBar(nil);
             let date_cls = Class::get("NSDate").unwrap();
+            let scrubber = Rc::new(Scrubber {
+                devices: RefCell::new(vec!["one".to_string(), "two".to_string(),
+                                           "a little bit longer one".to_string(),
+                                           "three".to_string(),
+                                           "this one is really quite a bit longer than the others".to_string()]),
+                //Vec::<String>::new(),
+                touch_tx: touch_tx,
+            });
             bar = OSXStatusBar {
                 app: app,
                 status_bar_item: status_bar.statusItemWithLength_(NSVariableStatusItemLength),
@@ -134,6 +138,7 @@ impl TStatusBar for OSXStatusBar {
                 run_date: msg_send![date_cls, distantPast],
                 label: Cell::new(0),
                 devices: Vec::new(),
+                scrubber: scrubber.clone(),
             };
             // Don't become foreground app on launch
             bar.app.setActivationPolicy_(NSApplicationActivationPolicyAccessory);
@@ -197,9 +202,6 @@ impl TStatusBar for OSXStatusBar {
             let b3id = bar.touchbar.create_button(nil, text, Box::new(move |_| {}));
             bar.touchbar.add_items_to_bar(popid, vec![b3id]);
 
-            let l1id = bar.touchbar.create_label();
-            bar.label.set(l1id);
-
             for item in ITEMS {
                 bar.devices.push(item.to_string());
             }
@@ -207,13 +209,21 @@ impl TStatusBar for OSXStatusBar {
             info!("devices: {:?}", (&bar.devices) as *const Vec<String>);
             let bar_ptr = &bar as *const OSXStatusBar as *const u32;
             info!("bar ptr: {:?}", bar_ptr);
+            //let testfn: Box<FnMut()> = Box::new(bar.test);
+            let scrubber1 = scrubber.clone();
+            let scrubber2 = scrubber.clone();
+            let scrubber3 = scrubber.clone();
+            let scrubber4 = scrubber.clone();
             let s1id = bar.touchbar.create_text_scrubber(
-                bar_ptr,
-                scrub_count,
-                scrub_text,
-                scrub_width,
-                scrub_touch);
+                Box::new(move |s|   { scrubber1.count(s) }),
+                Box::new(move |s,i| { scrubber2.text(s,i) }),
+                Box::new(move |s,i| { scrubber3.width(s,i) }),
+                Box::new(move |s,i| { scrubber4.touch(s,i) }),
+            );
             bar.touchbar.select_scrubber_item(s1id, 1);
+
+            let l1id = bar.touchbar.create_label();
+            bar.label.set(s1id);
 
             //bar.touchbar.add_items_to_bar(barid, vec![b1id, b2id, p1id]);
             bar.touchbar.add_items_to_bar(barid, vec![b1id, b2id, p1id, l1id, s1id]);
@@ -223,16 +233,16 @@ impl TStatusBar for OSXStatusBar {
             bar.touchbar.enable();
         }
         bar
-    }
+    }    
     fn touchbar(&mut self) {
         info!("Touchbar fucker!");
-        info!("devices: {:?}", (&self.devices) as *const Vec<String>);
-        let bar_ptr = self as *const OSXStatusBar as *const u32;
-        info!("bar ptr: {:?}", bar_ptr);
 
+        self.scrubber.devices.borrow_mut().push("a new device!".to_string());
+        let l1id = self.label.get();
+        //self.touchbar.select_scrubber_item(l1id, 0);
+        self.touchbar.refresh_scrubber(l1id);
+        //self.touchbar.update_label(l1id);
         unsafe {
-            let l1id = self.label.get();
-            self.touchbar.update_label(l1id);
 
             //let barid = self.touchbar.create_bar();
             //let text = NSString::alloc(nil).init_str("hi1");
