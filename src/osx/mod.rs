@@ -197,7 +197,7 @@ impl TStatusBar for OSXStatusBar {
             #[cfg(feature = "mac_white_icon")]
             let _ = msg_send![icon, setTemplate: YES]; // enable to make icon white
             bar.status_bar_item.button().setImage_(icon);
-            bar.touchbar.set_icon(icon);
+            bar.touchbar.set_icon(&img_path);
             let _ = msg_send![img, release];
             let _ = msg_send![icon, release];
 
@@ -220,12 +220,9 @@ impl TStatusBar for OSXStatusBar {
             ));
 
             let barid = bar.touchbar.create_bar();
-            let text = NSString::alloc(nil).init_str("hi1");
             let scrub1 = scrubber.clone();
-            //let b1id = bar.touchbar.create_button(nil, text, Box::new(move |_| {}));
-            let b1id = bar.touchbar.create_button(nil, text, Box::new(move |s| {scrub1.play(s)}));
-            let text = NSString::alloc(nil).init_str("hi2");
-            let b2id = bar.touchbar.create_button(nil, text, Box::new(move |_| {}));
+            let b1id = bar.touchbar.create_button(None, Some("hi1"), Box::new(move |s| {scrub1.play(s)}));
+            let b2id = bar.touchbar.create_button(None, Some("hi2"), Box::new(move |_| {}));
 
             let s2id = bar.touchbar.create_text_scrubber(scrubber.clone());
             bar.touchbar.select_scrubber_item(s2id, 3);
@@ -234,15 +231,14 @@ impl TStatusBar for OSXStatusBar {
             bar.touchbar.update_slider(sl1id, 15.0);
 
             let popid = bar.touchbar.create_bar();
-            let p1id = bar.touchbar.create_popover_item(popid);
-            let text = NSString::alloc(nil).init_str("hi3");
-            let b3id = bar.touchbar.create_button(nil, text, Box::new(move |_| {}));
+            let p1id = bar.touchbar.create_popover_item(None, Some("heyhey"), popid);
+            let b3id = bar.touchbar.create_button(None, Some("hi3"), Box::new(move |_| {}));
             bar.touchbar.add_items_to_bar(popid, vec![b3id, sl1id, s2id]);
 
             let s1id = bar.touchbar.create_text_scrubber(scrubber.clone());
             bar.touchbar.select_scrubber_item(s1id, 1);
 
-            let l1id = bar.touchbar.create_label();
+            let l1id = bar.touchbar.create_label("froop doop poop\nsecond level");
 
             bar.touchbar.add_items_to_bar(barid, vec![b1id, b2id, p1id, l1id, s1id]);
             bar.touchbar.set_bar_as_root(barid);

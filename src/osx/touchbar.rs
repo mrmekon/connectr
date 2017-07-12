@@ -15,10 +15,10 @@ use objc::Message;
 use objc::declare::ClassDecl;
 use objc::runtime::{Class, Object, Sel};
 use self::objc_foundation::{INSObject, NSObject, INSArray, NSArray, INSString};
-use self::cocoa::base::{nil, YES, NO};
+use self::cocoa::base::{nil, YES, NO, SEL};
 use self::cocoa::foundation::NSString;
 use self::cocoa::foundation::{NSRect, NSPoint, NSSize};
-use self::cocoa::appkit::NSApp;
+use self::cocoa::appkit::{NSApp, NSImage};
 use self::objc_id::Id;
 use self::objc_id::Shared;
 
@@ -71,18 +71,19 @@ pub type Touchbar = Box<RustTouchbarDelegateWrapper>;
 
 pub trait TouchbarTrait {
     fn alloc() -> Touchbar;
-    fn set_icon(&self, icon: *mut Object);
+    fn set_icon(&self, image: &str);
     fn enable(&self);
     fn create_bar(&mut self) -> BarId;
-    fn create_popover_item(&mut self, bar_id: BarId) -> BarId;
+    fn create_popover_item(&mut self, image: Option<&str>,
+                           text: Option<&str>, bar_id: BarId) -> ItemId;
     fn add_items_to_bar(&mut self, bar_id: BarId, items: Vec<ItemId>);
     fn set_bar_as_root(&mut self, bar_id: BarId);
-    fn create_label(&mut self) -> ItemId;
-    fn update_label(&mut self, label_id: ItemId);
+    fn create_label(&mut self, text: &str) -> ItemId;
+    fn update_label(&mut self, label_id: ItemId, text: &str);
     fn create_text_scrubber(&mut self, data: Rc<TScrubberData>) -> ItemId;
     fn select_scrubber_item(&mut self, scrub_id: ItemId, index: u32);
     fn refresh_scrubber(&mut self, scrub_id: ItemId);
-    fn create_button(&mut self, image: *mut Object, text: *mut Object, cb: ButtonCb) -> ItemId;
+    fn create_button(&mut self, image: Option<&str>, text: Option<&str>, cb: ButtonCb) -> ItemId;
     fn create_slider(&mut self, min: f64, max: f64, cb: SliderCb) -> ItemId;
     fn update_slider(&mut self, id: ItemId, value: f64);
 }
@@ -109,6 +110,50 @@ impl RustTouchbarDelegateWrapper {
             objc_ident as u64
         }
     }
+    fn alloc_button(&mut self, image: Option<&str>, text: Option<&str>,
+                    target: *mut Object, sel: SEL) -> *mut Object {
+        unsafe {
+            let text = match text {
+                Some(s) => NSString::alloc(nil).init_str(s),
+                None => nil,
+            };
+            let image = match image {
+                Some(i) => {
+                    let filename = NSString::alloc(nil).init_str(i);
+                    let objc_image = NSImage::alloc(nil).initWithContentsOfFile_(filename);
+                    let _ = msg_send![filename, release];
+                    objc_image
+                },
+                None => nil,
+            };
+            let cls = Class::get("NSButton").unwrap();
+            let btn: *mut Object;
+            // Match on (image, text) as booleans.   false == null.
+            match ((image as u64) != 0, (text as u64) != 0) {
+                (false,true) => {
+                    btn = msg_send![cls,
+                                    buttonWithTitle: text
+                                    target:target
+                                    action:sel];
+                }
+                (true,false) => {
+                    btn = msg_send![cls,
+                                    buttonWithImage: image
+                                    target:target
+                                    action:sel];
+                }
+                (true,true) => {
+                    btn = msg_send![cls,
+                                    buttonWithTitle: text
+                                    image:image
+                                    target:target
+                                    action:sel];
+                }
+                _ => { return nil }
+            }
+            btn
+        }
+    }
 }
 
 impl TouchbarTrait for Touchbar {
@@ -129,8 +174,14 @@ impl TouchbarTrait for Touchbar {
         }
         return rust
     }
-    fn set_icon(&self, icon: *mut Object) {
-        unsafe { let _:() = msg_send![self.objc, setIcon: icon]; }
+    fn set_icon(&self, image: &str) {
+        unsafe {
+            let filename = NSString::alloc(nil).init_str(image);
+            let objc_image = NSImage::alloc(nil).initWithContentsOfFile_(filename);
+            let _:() = msg_send![self.objc, setIcon: objc_image];
+            let _ = msg_send![filename, release];
+            let _ = msg_send![objc_image, release];
+        }
     }
     fn enable(&self) {
         unsafe {
@@ -159,28 +210,24 @@ impl TouchbarTrait for Touchbar {
             bar as u64
         }
     }
-    fn create_popover_item(&mut self, bar_id: BarId) -> ItemId {
+    fn create_popover_item(&mut self, image: Option<&str>,
+                           text: Option<&str>, bar_id: BarId) -> ItemId {
         unsafe {
             let bar = bar_id as *mut Object;
             let bar_ident = *self.bar_obj_map.get(&bar_id).unwrap() as *mut Object; 
             let ident = self.generate_ident();
-            // Save tuple
             let cls = Class::get("NSPopoverTouchBarItem").unwrap();
             let item: *mut Object = msg_send![cls, alloc];
             let item: *mut Object = msg_send![item, initWithIdentifier: ident];
-            let cls = Class::get("NSButton").unwrap();
-            let text = NSString::alloc(nil).init_str("pop");
-            let btn: *mut Object = msg_send![cls,
-                                             buttonWithTitle:text
-                                             target:self.objc.clone()
-                                             action:sel!(popbar:)];
+
+            let target = (&*self.objc.clone()) as *const ObjcAppDelegate as *mut Object;
+            let btn = self.alloc_button(image, text,
+                                        target,
+                                        sel!(popbar:));
             let _:() = msg_send![item, setShowsCloseButton: YES];
             let gesture: *mut Object = msg_send![item, makeStandardActivatePopoverGestureRecognizer];
             let _:() = msg_send![btn, addGestureRecognizer: gesture];
             let _:() = msg_send![item, setCollapsedRepresentation: btn];
-            
-            //let idents = NSArray::from_vec(vec![b1_ident]);
-            //let _ : () = msg_send![bar, setDefaultItemIdentifiers: idents];
             let _:() = msg_send![item, setPopoverTouchBar: bar];
             let _:() = msg_send![item, setPressAndHoldTouchBar: bar];
 
@@ -219,14 +266,14 @@ impl TouchbarTrait for Touchbar {
             let _: () = msg_send![self.objc, applicationDidFinishLaunching: 0];
         }
     }
-    fn create_label(&mut self) -> ItemId {
+    fn create_label(&mut self, text: &str) -> ItemId {
         unsafe {
             let frame = NSRect::new(NSPoint::new(0., 0.), NSSize::new(300., 44.));
             let cls = Class::get("NSTextField").unwrap();
             let label: *mut Object = msg_send![cls, alloc];
             let label: *mut Object = msg_send![label, initWithFrame: frame];
             let _:() = msg_send![label, setEditable: NO];
-            let text = NSString::alloc(nil).init_str("froop doop poop\nsecond level");
+            let text = NSString::alloc(nil).init_str(text);
             let _:() = msg_send![label, setStringValue: text];
 
             let ident = self.generate_ident();
@@ -240,11 +287,11 @@ impl TouchbarTrait for Touchbar {
             item as u64
         } 
     }
-    fn update_label(&mut self, label_id: ItemId) {
+    fn update_label(&mut self, label_id: ItemId, text: &str) {
         unsafe {
             let item: *mut Object = label_id as *mut Object;
             let label: *mut Object = msg_send![item, view];
-            let text = NSString::alloc(nil).init_str("updated\nthis shit");
+            let text = NSString::alloc(nil).init_str(text);
             let _:() = msg_send![label, setStringValue: text];
         }
     }
@@ -302,35 +349,14 @@ impl TouchbarTrait for Touchbar {
             let _:() = msg_send![scrubber, setSelectedIndex: sel_idx];
         }
     }
-    fn create_button(&mut self, image: *mut Object, text: *mut Object, cb: ButtonCb) -> ItemId {
+    fn create_button(&mut self, image: Option<&str>, text: Option<&str>, cb: ButtonCb) -> ItemId {
         unsafe {
             let ident = self.generate_ident();
             let cls = Class::get("NSButton").unwrap();
-            let btn: *mut Object;
-            // Match on (image, text) as booleans.   false == null.
-            match ((image as u64) != 0, (text as u64) != 0) {
-                (false,true) => {
-                    btn = msg_send![cls,
-                                    buttonWithTitle: text
-                                    target:self.objc.clone()
-                                    action:sel!(button:)];
-                }
-                (true,false) => {
-                    btn = msg_send![cls,
-                                    buttonWithImage: image
-                                    target:self.objc.clone()
-                                    action:sel!(button:)];
-                }
-                (true,true) => {
-                    btn = msg_send![cls,
-                                    buttonWithTitle: text
-                                    image:image
-                                    target:self.objc.clone()
-                                    action:sel!(button:)];
-                }
-                _ => { return 0 }
-            }
-
+            let target = (&*self.objc.clone()) as *const ObjcAppDelegate as *mut Object;
+            let btn = self.alloc_button(image, text,
+                                        target,
+                                        sel!(button:));
             let cls = Class::get("NSCustomTouchBarItem").unwrap();
             let item: *mut Object = msg_send![cls, alloc];
             let item: *mut Object = msg_send![item, initWithIdentifier: ident];
