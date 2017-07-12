@@ -64,6 +64,7 @@ pub struct RustTouchbarDelegateWrapper {
     control_obj_map: BTreeMap<ItemId, ItemId>,
     scrubber_obj_map: BTreeMap<ItemId, Scrubber>,
     button_cb_map: BTreeMap<ItemId, ButtonCb>,
+    slider_cb_map: BTreeMap<ItemId, SliderCb>,
 }
 
 pub type Touchbar = Box<RustTouchbarDelegateWrapper>;
@@ -82,6 +83,8 @@ pub trait TouchbarTrait {
     fn select_scrubber_item(&mut self, scrub_id: ItemId, index: u32);
     fn refresh_scrubber(&mut self, scrub_id: ItemId);
     fn create_button(&mut self, image: *mut Object, text: *mut Object, cb: ButtonCb) -> ItemId;
+    fn create_slider(&mut self, min: f64, max: f64, cb: SliderCb) -> ItemId;
+    fn update_slider(&mut self, id: ItemId, value: f64);
 }
 
 //pub type ScrubberCountFn = fn(*const u32, ItemId) -> u32;
@@ -118,6 +121,7 @@ impl TouchbarTrait for Touchbar {
             control_obj_map: BTreeMap::<ItemId, ItemId>::new(),
             scrubber_obj_map: BTreeMap::<ItemId, Scrubber>::new(),
             button_cb_map: BTreeMap::<ItemId, ButtonCb>::new(),
+            slider_cb_map: BTreeMap::<ItemId, SliderCb>::new(),
         });
         unsafe {
             let ptr: u64 = &*rust as *const RustTouchbarDelegateWrapper as u64;
@@ -338,6 +342,31 @@ impl TouchbarTrait for Touchbar {
             item as u64
         }
     }
+    fn create_slider(&mut self, min: f64, max: f64, cb: SliderCb) -> ItemId {
+        unsafe {
+            let ident = self.generate_ident();
+            let cls = Class::get("NSSliderTouchBarItem").unwrap();
+            let item: *mut Object = msg_send![cls, alloc];
+            let item: *mut Object = msg_send![item, initWithIdentifier: ident];
+            let slider: *mut Object = msg_send![item, slider];
+            msg_send![slider, setMinValue: min];
+            msg_send![slider, setMaxValue: max];
+            msg_send![slider, setContinuous: YES];
+            msg_send![item, setTarget: self.objc.clone()];
+            msg_send![item, setAction: sel!(slider:)];
+            self.bar_obj_map.insert(item as u64, ident as u64);
+            self.control_obj_map.insert(slider as u64, item as u64);
+            self.slider_cb_map.insert(slider as u64, cb);
+            item as u64
+        }
+    }
+    fn update_slider(&mut self, id: ItemId, value: f64) {
+        unsafe {
+            let item = id as *mut Object;
+            let slider: *mut Object = msg_send![item, slider];
+            let _:() = msg_send![slider, setDoubleValue: value];
+        }
+    }
 }
 
 pub type BarId = u64;
@@ -345,6 +374,7 @@ pub type ItemId = u64;
 pub type Ident = u64;
 //pub type ButtonCb = Box<Fn(u64, &Sender<String>)>;
 pub type ButtonCb = Box<Fn(u64)>;
+pub type SliderCb = Box<Fn(u64, f64)>;
 
 pub enum ObjcAppDelegate {}
 impl ObjcAppDelegate {}
@@ -444,16 +474,14 @@ impl INSObject for ObjcAppDelegate {
                     let ptr: u64 = *this.get_ivar("_rust_wrapper");
                     let wrapper = &mut *(ptr as *mut RustTouchbarDelegateWrapper);
                     
-                    info!("got wrapper");
                     let btn = sender as *mut Object;
-                    info!("got button");
                     let item = *wrapper.control_obj_map.get(&sender).unwrap() as *mut Object;
-                    info!("got item");
                     let bar: *mut Object = msg_send![item, popoverTouchBar];
-                    info!("got bar");
                     let ident = *wrapper.bar_obj_map.get(&(bar as u64)).unwrap() as *mut Object;
-                    info!("got ident");
 
+                    // Present the request popover.  This must be done instead of
+                    // using the popover's built-in showPopover because that pops
+                    // _under_ a system function bar.
                     let cls = Class::get("NSTouchBar").unwrap();
                     msg_send![cls,
                               presentSystemModalFunctionBar: bar
@@ -461,29 +489,6 @@ impl INSObject for ObjcAppDelegate {
                     let app = NSApp();
                     let _:() = msg_send![app, setTouchBar: nil];
                 }
-
-                //unsafe {
-                //    // Present the request popover.  This must be done instead of
-                //    // using the popover's built-in showPopover because that pops
-                //    // _under_ a system function bar.
-                //    let ptr: u64 = *this.get_ivar("_popbar");
-                //    let bar = ptr as *mut Object;
-                //    let ptr: u64 = *this.get_ivar("_popover");
-                //    let item = ptr as *mut Object;
-                //    msg_send![item, showPopover: bar];
-                //    let pop_ident = objc_foundation::NSString::from_str("com.trevorbentley.pop");
-                //    let cls = Class::get("NSTouchBar").unwrap();
-                //    msg_send![cls,
-                //              presentSystemModalFunctionBar: bar
-                //              systemTrayItemIdentifier: pop_ident];
-                //
-                //    // Alternative: popup, and close the main bar
-                //    //let bar: u64 = *this.get_ivar("_groupbar");
-                //    //let cls = Class::get("NSTouchBar").unwrap();
-                //    //msg_send![cls, minimizeSystemModalFunctionBar: bar];
-                //    //msg_send![item, showPopover: bar];
-                //
-                //}
             }
             extern fn objc_button(this: &mut Object, _cmd: Sel, sender: u64) {
                 info!("Button push: {}", sender as u64);
@@ -493,11 +498,18 @@ impl INSObject for ObjcAppDelegate {
                     let ref cb = *wrapper.button_cb_map.get(&sender).unwrap();
                     cb(sender);
                 }
-                //unsafe {
-                    //let slider: *mut Object = msg_send![sender, slider];
-                    //let val: u32 = msg_send![slider, intValue];
-                    //info!("Slider val: {}", val);
-                //}
+            }
+            extern fn objc_slider(this: &mut Object, _cmd: Sel, sender: u64) {
+                info!("Slider slide: {}", sender as u64);
+                unsafe {
+                    let ptr: u64 = *this.get_ivar("_rust_wrapper");
+                    let wrapper = &mut *(ptr as *mut RustTouchbarDelegateWrapper);
+                    let item = sender as *mut Object;
+                    let slider: *mut Object = msg_send![item, slider];
+                    let ref cb = *wrapper.slider_cb_map.get(&(slider as u64)).unwrap();
+                    let value: f64 = msg_send![slider, doubleValue];
+                    cb(sender, value);
+                }
             }
             extern fn objc_present(this: &mut Object, _cmd: Sel, _sender: u64) {
                 info!("present");
@@ -508,19 +520,14 @@ impl INSObject for ObjcAppDelegate {
                     print_nsstring(ident);
                     let bar = bar_int as *mut Object;
                     let cls = Class::get("NSTouchBar").unwrap();
-                    info!("present msg_send");
                     let len: u64 = msg_send![ident, length];
-                    info!("set _groupId len: {}", len);
-                    info!("bar: {}", bar_int);
                     msg_send![cls,
                               presentSystemModalFunctionBar: bar
                               systemTrayItemIdentifier: ident];
-                    info!("present sent");
                 }
             }
             extern fn objc_touch_bar_make_item_for_identifier(this: &mut Object, _cmd: Sel,
                                                               _bar: u64, id_ptr: u64) -> u64 {
-                info!("MAKE");
                 unsafe {
                     // Find the touchbar item matching this identifier in the
                     // Objective-C object map of the Rust wrapper class, and
@@ -635,30 +642,6 @@ impl INSObject for ObjcAppDelegate {
                 unsafe {
                     DFRSystemModalShowsCloseBoxWhenFrontMost(YES);
 
-//                    // Initialize touchbar singleton with button layout
-//                    // TODO: break out into function.  this needs to be runtime reconfigured
-//                    let b1_ident = objc_foundation::NSString::from_str("com.trevorbentley.b1");
-//                    let b2_ident = objc_foundation::NSString::from_str("com.trevorbentley.b2");
-//                    let b3_ident = objc_foundation::NSString::from_str("com.trevorbentley.b3");
-//                    let slide_ident = objc_foundation::NSString::from_str("com.trevorbentley.slide");
-//                    let pop_ident = objc_foundation::NSString::from_str("com.trevorbentley.pop");
-//                    let cls = Class::get("NSTouchBar").unwrap();
-//                    let bar: *mut Object = msg_send![cls, alloc];
-//                    let bar: *mut objc::runtime::Object = msg_send![bar, init];
-//                    let idents = NSArray::from_vec(vec![b1_ident, b2_ident, b3_ident,
-//                                                        slide_ident, pop_ident]);
-//                    let _ : () = msg_send![bar, setDefaultItemIdentifiers: idents];
-//                    let this_copy = this as *mut Object as u64;
-//                    let _ : () = msg_send![bar, setDelegate: this_copy as *mut Object];
-//                    let _ : () = msg_send![this, setGroupTouchBar: bar];
-
-                    // Add icon to touchbar's Control Strip.
-                    //let ident = NSString::alloc(nil).init_str("com.trevorbentley.group");
-                    //info!("set _groupId");
-                    //this.set_ivar("_groupId", ident as u64);
-                    //let len: u64 = msg_send![ident, length];
-                    //info!("set _groupId len: {}", len);
-
                     let ident_int: u64 = *this.get_ivar("_groupId");
                     let ident = ident_int as *mut Object;
                     let cls = Class::get("NSCustomTouchBarItem").unwrap();
@@ -691,6 +674,9 @@ impl INSObject for ObjcAppDelegate {
 
                 let f: extern fn(&mut Object, Sel, u64) = objc_button;
                 decl.add_method(sel!(button:), f);
+
+                let f: extern fn(&mut Object, Sel, u64) = objc_slider;
+                decl.add_method(sel!(slider:), f);
 
                 let f: extern fn(&mut Object, Sel, u64) = objc_popbar;
                 decl.add_method(sel!(popbar:), f);

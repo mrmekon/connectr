@@ -230,11 +230,14 @@ impl TStatusBar for OSXStatusBar {
             let s2id = bar.touchbar.create_text_scrubber(scrubber.clone());
             bar.touchbar.select_scrubber_item(s2id, 3);
 
+            let sl1id = bar.touchbar.create_slider(0.0, 50.0, Box::new(move |s,v| {info!("Slid to: {}", v);}));
+            bar.touchbar.update_slider(sl1id, 15.0);
+
             let popid = bar.touchbar.create_bar();
             let p1id = bar.touchbar.create_popover_item(popid);
             let text = NSString::alloc(nil).init_str("hi3");
             let b3id = bar.touchbar.create_button(nil, text, Box::new(move |_| {}));
-            bar.touchbar.add_items_to_bar(popid, vec![b3id, s2id]);
+            bar.touchbar.add_items_to_bar(popid, vec![b3id, sl1id, s2id]);
 
             let s1id = bar.touchbar.create_text_scrubber(scrubber.clone());
             bar.touchbar.select_scrubber_item(s1id, 1);
