@@ -13,10 +13,4 @@ fn main() {
     // Try again on re-build if either INI file has changed.
     println!("cargo:rerun-if-changed=connectr.ini");
     println!("cargo:rerun-if-changed=connectr.ini.in");
-
-    // Mac touchbar support depends on a private framework to inject itself
-    // into the persistent Control Strip area.  This adds it to the linker
-    // include path.
-    #[cfg(feature = "mac_touchbar")]
-    println!("cargo:rustc-link-search=framework={}", "/System/Library/PrivateFrameworks");
 }
