@@ -25,14 +25,9 @@ use self::cocoa::appkit::{NSApp,
 
 use self::rustnsobject::{NSObj, NSObjTrait, NSObjCallbackTrait};
 
-use std::sync::mpsc::{Sender, Receiver};
-use std::sync::mpsc::channel;
-
+use std::sync::mpsc::Sender;
 use std::ptr;
-use std::rc::Rc;
 use std::cell::Cell;
-use std::cell::RefCell;
-use std::borrow::BorrowMut;
 use std::ffi::CStr;
 use std::thread::sleep;
 use std::time::Duration;
@@ -123,9 +118,10 @@ impl TStatusBar for OSXStatusBar {
                     cb(sender, &s.tx);
                 }
             ));
+            let _: () = msg_send![app, finishLaunching];
         }
         bar
-    }    
+    }
     fn can_redraw(&mut self) -> bool {
         true
     }
