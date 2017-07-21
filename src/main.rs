@@ -4,6 +4,13 @@ use connectr::TStatusBar;
 use connectr::MenuItem;
 use connectr::NSCallback;
 
+extern crate rubrail;
+use rubrail::Touchbar;
+use rubrail::TTouchbar;
+use rubrail::TScrubberData;
+use rubrail::ImageTemplate;
+use rubrail::SpacerType;
+
 extern crate ctrlc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -17,6 +24,9 @@ use std::ptr;
 use std::thread::sleep;
 use std::time::Duration;
 use std::sync::mpsc::channel;
+use std::sync::mpsc::{Sender, Receiver};
+use std::rc::Rc;
+use std::cell::RefCell;
 
 extern crate time;
 
@@ -37,7 +47,6 @@ enum CallbackAction {
     SkipPrev,
     Volume,
     Preset,
-    Debug,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -61,6 +70,223 @@ struct ConnectrApp {
     player_state: Option<connectr::PlayerState>,
 }
 
+struct TouchbarScrubberData {
+    entries: RefCell<Vec<String>>,
+}
+impl TouchbarScrubberData {
+    fn new() -> Rc<TouchbarScrubberData> {
+        Rc::new(TouchbarScrubberData {
+            entries: RefCell::new(Vec::<String>::new())
+        })
+    }
+    fn fill(&self, items: Vec<String>) {
+        let mut entries = self.entries.borrow_mut();
+        entries.clear();
+        for item in items {
+            entries.push(item);
+        }
+    }
+}
+impl TScrubberData for TouchbarScrubberData {
+    fn count(&self, _item: rubrail::ItemId) -> u32 {
+        self.entries.borrow().len() as u32
+    }
+    fn text(&self, _item: rubrail::ItemId, idx: u32) -> String {
+        self.entries.borrow()[idx as usize].to_string()
+    }
+    fn width(&self, _item: rubrail::ItemId, idx: u32) -> u32 {
+        // 10px per character + some padding seems to work nicely for the default
+        // font.  no idea what it's like on other machines.  does the touchbar
+        // font change? ¯\_(ツ)_/¯
+        let len = self.entries.borrow()[idx as usize].len() as u32;
+        let width = len * 8 + 20;
+        width
+    }
+    fn touch(&self, _item: rubrail::ItemId, idx: u32) {
+        info!("scrub touch: {}", idx);
+    }
+}
+
+#[allow(dead_code)]
+struct TouchbarUI {
+    touchbar: Touchbar,
+    tx: Sender<String>,
+    rx: Receiver<String>,
+
+    root_bar: rubrail::BarId,
+    playing_label: rubrail::ItemId,
+    prev_button: rubrail::ItemId,
+    play_pause_button: rubrail::ItemId,
+    next_button: rubrail::ItemId,
+
+    preset_bar: rubrail::BarId,
+    preset_popover: rubrail::ItemId,
+    preset_data: Rc<TouchbarScrubberData>,
+    preset_scrubber: rubrail::ItemId,
+
+    device_bar: rubrail::BarId,
+    device_popover: rubrail::ItemId,
+    device_data: Rc<TouchbarScrubberData>,
+    device_scrubber: rubrail::ItemId,
+
+    volume_bar: rubrail::BarId,
+    volume_popover: rubrail::ItemId,
+    volume_slider: rubrail::ItemId,
+
+    submenu_bar: rubrail::BarId,
+    submenu_popover: rubrail::ItemId,
+}
+
+impl TouchbarUI {
+    fn init() -> TouchbarUI {
+        let (tx,rx) = channel::<String>();
+        let mut touchbar = Touchbar::alloc("cnr");
+        let icon = rubrail::util::bundled_resource_path("connectr_80px_300dpi", "png");
+        if let Some(path) = icon {
+            touchbar.set_icon(&path);
+        }
+
+        let playing_label = touchbar.create_label(
+            "Now Playing Long Track                                  \n\
+             Now Playing Long Artist                                 ");
+        let image = touchbar.create_image_from_template(ImageTemplate::RewindTemplate);
+        let tx_clone = tx.clone();
+        let prev_button = touchbar.create_button(Some(&image), None, Box::new(move |s| {
+            let cmd = MenuCallbackCommand {
+                action: CallbackAction::SkipPrev,
+                sender: s,
+                data: String::new(),
+            };
+            let _ = tx_clone.send(serde_json::to_string(&cmd).unwrap());
+        }));
+        let image = touchbar.create_image_from_template(ImageTemplate::PlayPauseTemplate);
+        let tx_clone = tx.clone();
+        let play_pause_button = touchbar.create_button(Some(&image), None, Box::new(move |s| {
+            let cmd = MenuCallbackCommand {
+                action: CallbackAction::PlayPause,
+                sender: s,
+                data: String::new(),
+            };
+            let _ = tx_clone.send(serde_json::to_string(&cmd).unwrap());
+        }));
+        let image = touchbar.create_image_from_template(ImageTemplate::FastForwardTemplate);
+        let tx_clone = tx.clone();
+        let next_button = touchbar.create_button(Some(&image), None, Box::new(move |s| {
+            let cmd = MenuCallbackCommand {
+                action: CallbackAction::SkipNext,
+                sender: s,
+                data: String::new(),
+            };
+            let _ = tx_clone.send(serde_json::to_string(&cmd).unwrap());
+        }));
+
+        let preset_scrubber_data = TouchbarScrubberData::new();
+        let preset_scrubber = touchbar.create_text_scrubber(preset_scrubber_data.clone());
+        let preset_bar = touchbar.create_bar();
+        touchbar.add_items_to_bar(&preset_bar, vec![preset_scrubber]);
+        let preset_popover = touchbar.create_popover_item(
+            None,
+            Some(&format!("{:-^35}", "Presets")),
+            &preset_bar);
+
+        let device_scrubber_data = TouchbarScrubberData::new();
+        let device_scrubber = touchbar.create_text_scrubber(device_scrubber_data.clone());
+        let device_bar = touchbar.create_bar();
+        touchbar.add_items_to_bar(&device_bar, vec![device_scrubber]);
+        let device_popover = touchbar.create_popover_item(
+            None,
+            Some(&format!("{:-^35}", "Devices")),
+            &device_bar);
+
+        let tx_clone = tx.clone();
+        let volume_slider = touchbar.create_slider(0., 100., Box::new(move |s,v| {
+            let cmd = MenuCallbackCommand {
+                action: CallbackAction::Volume,
+                sender: s,
+                data: (v as u32).to_string(),
+            };
+            let _ = tx_clone.send(serde_json::to_string(&cmd).unwrap());
+        }));
+        let volume_bar = touchbar.create_bar();
+        touchbar.add_items_to_bar(&volume_bar, vec![volume_slider]);
+        let image = touchbar.create_image_from_template(ImageTemplate::AudioOutputVolumeMediumTemplate);
+        let volume_popover = touchbar.create_popover_item(
+            Some(&image),
+            None,
+            &volume_bar);
+
+        let submenu_bar = touchbar.create_bar();
+        touchbar.add_items_to_bar(&submenu_bar, vec![
+            preset_popover,
+            device_popover,
+        ]);
+        let image = touchbar.create_image_from_template(ImageTemplate::GoUpTemplate);
+        let submenu_popover = touchbar.create_popover_item(
+            Some(&image),
+            None,
+            &submenu_bar);
+
+        let flexible_space = touchbar.create_spacer(SpacerType::Flexible);
+        let flexible_space2 = touchbar.create_spacer(SpacerType::Flexible);
+        let root_bar = touchbar.create_bar();
+        touchbar.add_items_to_bar(&root_bar, vec![
+            playing_label,
+            prev_button,
+            play_pause_button,
+            next_button,
+            flexible_space,
+            volume_popover,
+            flexible_space2,
+            submenu_popover,
+        ]);
+        touchbar.set_bar_as_root(root_bar);
+
+        TouchbarUI {
+            touchbar: touchbar,
+            tx: tx,
+            rx: rx,
+
+            root_bar: root_bar,
+            playing_label: playing_label,
+            prev_button: prev_button,
+            play_pause_button: play_pause_button,
+            next_button: next_button,
+
+            preset_bar: preset_bar,
+            preset_popover: preset_popover,
+            preset_data: preset_scrubber_data,
+            preset_scrubber: preset_scrubber,
+
+            device_bar: device_bar,
+            device_popover: device_popover,
+            device_data: device_scrubber_data,
+            device_scrubber: device_scrubber,
+
+            volume_bar: volume_bar,
+            volume_popover: volume_popover,
+            volume_slider: volume_slider,
+
+            submenu_bar: submenu_bar,
+            submenu_popover: submenu_popover,
+        }
+    }
+    fn update_now_playing(&mut self, track: &str, artist: &str) {
+        let text = format!("{:<50}\n{:<50}", track, artist);
+        self.touchbar.update_label(&self.playing_label, &text);
+    }
+    fn update_volume(&mut self, volume: u32) {
+        self.touchbar.update_slider(&self.volume_slider, volume as f64);
+    }
+    fn update_scrubbers(&mut self) {
+        self.touchbar.refresh_scrubber(&self.device_scrubber);
+        self.touchbar.refresh_scrubber(&self.preset_scrubber);
+    }
+    fn set_selected_device(&mut self, selected: u32) {
+        self.touchbar.select_scrubber_item(&self.device_scrubber, selected);
+    }
+
+}
+
 fn play_action_label(is_playing: bool) -> &'static str {
     match is_playing {
         true => "Pause",
@@ -69,6 +295,7 @@ fn play_action_label(is_playing: bool) -> &'static str {
 }
 
 fn update_state(app: &mut ConnectrApp, spotify: &mut connectr::SpotifyConnectr) -> bool {
+    info!("Request update");
     let dev_list = spotify.request_device_list();
     let player_state = spotify.request_player_state();
     match dev_list {
@@ -82,7 +309,8 @@ fn update_state(app: &mut ConnectrApp, spotify: &mut connectr::SpotifyConnectr) 
     true
 }
 
-fn fill_menu<T: TStatusBar>(app: &mut ConnectrApp, spotify: &mut connectr::SpotifyConnectr, status: &mut T) {
+fn fill_menu<T: TStatusBar>(app: &mut ConnectrApp, spotify: &mut connectr::SpotifyConnectr,
+                            status: &mut T, touchbar: &mut TouchbarUI) {
     let ref device_list = app.device_list.as_ref().unwrap();
     let ref player_state = app.player_state.as_ref().unwrap();
 
@@ -99,6 +327,9 @@ fn fill_menu<T: TStatusBar>(app: &mut ConnectrApp, spotify: &mut connectr::Spoti
     status.add_label(&format!("{:<50}", &player_state.item.name));
     status.add_label(&format!("{:<50}", &player_state.item.artists[0].name));
     status.add_label(&format!("{:<50}", &player_state.item.album.name));
+    touchbar.update_now_playing(&player_state.item.name,
+                                &player_state.item.artists[0].name);
+
     let ms = player_state.item.duration_ms;
     let min = ms / 1000 / 60;
     let sec = (ms - (min * 60 * 1000)) / 1000;
@@ -146,6 +377,8 @@ fn fill_menu<T: TStatusBar>(app: &mut ConnectrApp, spotify: &mut connectr::Spoti
     status.add_separator();
     {
         let presets = spotify.get_presets();
+        let preset_names: Vec<String> = presets.into_iter().map(|p| {p.0.clone()}).collect();
+        touchbar.preset_data.fill(preset_names);
         for preset in presets {
             let ref name = preset.0;
             let uri = preset.1.clone();
@@ -166,7 +399,18 @@ fn fill_menu<T: TStatusBar>(app: &mut ConnectrApp, spotify: &mut connectr::Spoti
     status.add_label("Devices:");
     status.add_separator();
     println!("Visible Devices:");
+
+    let device_names: Vec<String> = (*device_list).into_iter().map(|d| {d.name.clone()}).collect();
+    touchbar.device_data.fill(device_names);
+
+    let selected_arr: Vec<bool> = (*device_list).into_iter().map(|d| {d.is_active}).collect();
+    if let Ok(selected) = selected_arr.binary_search(&true) {
+        touchbar.set_selected_device(selected as u32);
+    }
+    touchbar.update_scrubbers();
+
     let mut cur_volume: u32 = 0;
+    let mut cur_volume_exact: u32 = 0;
     for dev in *device_list {
         println!("{}", dev);
         let id = match dev.id {
@@ -184,14 +428,16 @@ fn fill_menu<T: TStatusBar>(app: &mut ConnectrApp, spotify: &mut connectr::Spoti
         });
         let item = status.add_item(&dev.name, cb, dev.is_active);
         if dev.is_active {
+            cur_volume_exact = dev.volume_percent.unwrap_or(0);
             cur_volume = match dev.volume_percent {
                 Some(v) => {
                     (v as f32 / 10.0).round() as u32 * 10
                 },
                 None => 100,
-            }
+            };
         }
         app.menu.device.push((item, id));
+        touchbar.update_volume(cur_volume_exact);
     }
     println!("");
 
@@ -215,17 +461,6 @@ fn fill_menu<T: TStatusBar>(app: &mut ConnectrApp, spotify: &mut connectr::Spoti
             i += 10;
         }
     }
-    status.add_separator();
-    let cb: NSCallback = Box::new(move |sender, tx| {
-        let cmd = MenuCallbackCommand {
-            action: CallbackAction::Debug,
-            sender: sender,
-            data: String::new(),
-        };
-        let _ = tx.send(serde_json::to_string(&cmd).unwrap());
-    });
-    status.add_item("Fuck With Touchbar", cb, false);
-    
     status.add_separator();
     status.add_quit("Exit");
 }
@@ -313,11 +548,9 @@ fn handle_callback<T: TStatusBar>(app: &mut ConnectrApp, spotify: &mut connectr:
             for item in volume {
                 status.unsel_item(*item as u64);
             }
-            status.sel_item(cmd.sender);
+            // TODO: select correct volume some other way
+            //status.sel_item(cmd.sender);
         }
-        CallbackAction::Debug => {
-            status.touchbar();
-        }  
     }
 }
 
@@ -396,6 +629,8 @@ fn main() {
     spotify.set_target_device(None);
     let mut status = connectr::StatusBar::new(tx);
     info!("Created status bar.");
+    let mut touchbar = TouchbarUI::init();
+    info!("Created touchbar.");
 
     let mut tiny: Option<process::Child> = None;
     if let Some(wine_dir) = find_wine_path() {
@@ -420,13 +655,19 @@ fn main() {
             // Redraw the whole menu once every 60 seconds, or sooner if a
             // command is processed later.
             clear_menu(&mut app, &mut spotify, &mut status);
-            fill_menu(&mut app, &mut spotify, &mut status);
+            fill_menu(&mut app, &mut spotify, &mut status, &mut touchbar);
             refresh_time_utc = refresh_time(&mut app, now);
             info!("Refreshed Spotify state.");
         }
 
         spotify.await_once(false);
         if let Ok(s) = rx.try_recv() {
+            println!("Received {}", s);
+            let cmd: MenuCallbackCommand = serde_json::from_str(&s).unwrap();
+            handle_callback(&mut app, &mut spotify, &mut status, &cmd);
+            refresh_time_utc = now + 1;
+        }
+        if let Ok(s) = touchbar.rx.try_recv() {
             println!("Received {}", s);
             let cmd: MenuCallbackCommand = serde_json::from_str(&s).unwrap();
             handle_callback(&mut app, &mut spotify, &mut status, &cmd);
