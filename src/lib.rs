@@ -78,7 +78,6 @@ pub type MenuItem = *mut Object;
 pub trait TStatusBar {
     type S: TStatusBar;
     fn new(tx: Sender<String>) -> Self::S;
-    fn touchbar(&mut self);
     fn can_redraw(&mut self) -> bool;
     fn clear_items(&mut self);
     fn add_separator(&mut self);
@@ -99,7 +98,6 @@ pub struct DummyStatusBar {}
 impl TStatusBar for DummyStatusBar {
     type S = DummyStatusBar;
     fn new(_: Sender<String>) -> Self::S { DummyStatusBar {} }
-    fn touchbar(&mut self) {}
     fn can_redraw(&mut self) -> bool { true }
     fn clear_items(&mut self) {}
     fn add_separator(&mut self) {}

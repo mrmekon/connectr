@@ -27,7 +27,6 @@ panic = 'unwind'
 
 [features]
 verbose_http = []
-mac_touchbar = []
 mac_white_icon = []
 
 [dependencies]
@@ -52,12 +51,26 @@ ctrlc = "3.0.1"
 #systray = {git = "https://github.com/mrmekon/systray-rs.git"}
 systray = {path = "deps/systray-rs", version="0.1.1-connectr"}
 
+[target."cfg(windows)".dependencies.rubrail]
+#version = "0.3"
+path = "deps/rubrail-rs"
+version="0.3.1-rc"
+default-features=false
+
 [target."cfg(all(unix, not(target_os = \"macos\")))".dependencies]
+
+[target."cfg(all(unix, not(target_os = \"macos\")))".dependencies.rubrail]
+#version = "0.3"
+path = "deps/rubrail-rs"
+version = "0.3.1-rc"
+default-features = false
 
 [target."cfg(target_os = \"macos\")".dependencies]
 cocoa = "0.8.1"
 objc-foundation = "0.1.1"
 objc_id = "0.1"
+#rubrail = "0.3"
+rubrail = {path = "deps/rubrail-rs", version="0.3.1-rc"}
 
 [target."cfg(target_os = \"macos\")".dependencies.objc]
 version = "0.2.2"

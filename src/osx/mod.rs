@@ -1,18 +1,5 @@
 mod rustnsobject;
 
-#[cfg(feature = "mac_touchbar")]
-mod touchbar;
-#[cfg(feature = "mac_touchbar")]
-use self::touchbar::{Touchbar, TouchbarTrait, TScrubberData};
-#[cfg(not(feature = "mac_touchbar"))]
-struct Touchbar {}
-#[cfg(not(feature = "mac_touchbar"))]
-impl Touchbar {
-    fn alloc() -> Touchbar { Touchbar {} }
-    fn set_icon(&self, _: *mut Object) {}
-    fn enable(&self) {}
-}
-
 extern crate objc;
 extern crate objc_foundation;
 extern crate cocoa;
@@ -60,7 +47,6 @@ pub struct OSXStatusBar {
     app: *mut objc::runtime::Object,
     status_bar_item: *mut objc::runtime::Object,
     menu_bar: *mut objc::runtime::Object,
-    touchbar: Touchbar,
 
     // Run loop state
     // Keeping these in persistent state instead of recalculating saves quite a
@@ -69,73 +55,6 @@ pub struct OSXStatusBar {
     run_count: Cell<u64>,
     run_mode: *mut objc::runtime::Object,
     run_date: *mut objc::runtime::Object,
-
-    touch_rx: Receiver<TouchbarCommand>,
-    label: Cell<u64>,
-    scrubber: Rc<TouchbarHandler>,
-}
-
-const ITEMS: &'static [&'static str] = &["a rather longer first one", "one","two","much longer than two","three", "seventeen", "A speaker with a very long name is not an impossible thing."];
-
-#[derive(Serialize, Deserialize, Debug)]
-enum TouchbarEvent {
-    Play,
-    SelectDevice,
-}
-
-#[derive(Serialize, Deserialize, Debug)]
-struct TouchbarCommand {
-    event: TouchbarEvent,
-    item: touchbar::ItemId,
-    value: Option<u32>,
-}
-
-struct TouchbarHandler {
-    devices: RefCell<Vec<String>>,
-    touch_tx: Sender<TouchbarCommand>,
-}
-
-impl TouchbarHandler {
-    fn play(&self, item: touchbar::ItemId) {
-        info!("Handler BUTTON: {}", item);
-        self.touch_tx.send(TouchbarCommand {
-            event: TouchbarEvent::Play,
-            item: item,
-            value: None
-        });
-    }
-}
-
-impl TScrubberData for TouchbarHandler {
-    fn count(&self, item: touchbar::ItemId) -> u32 {
-        let dev = self.devices.borrow();
-        let len = (*dev).len();
-        info!("MOD GOT SCRUBBER COUNT REQUEST {}", len);
-        self.devices.borrow().len() as u32
-    }
-    fn text(&self, item: touchbar::ItemId, idx: u32) -> String {
-        info!("MOD GOT SCRUBBER TEXT REQUEST {}", idx);
-        self.devices.borrow()[idx as usize].to_string()
-    }
-    fn width(&self, item: touchbar::ItemId, idx: u32) -> u32 {
-        info!("scrub_width {}", idx);
-        // 10px per character + some padding seems to work nicely for the default
-        // font.  no idea what it's like on other machines.  does the touchbar
-        // font change? ¯\_(ツ)_/¯
-        let len = self.devices.borrow()[idx as usize].len() as u32;
-        let width = len * 8 + 20;
-        info!("Width for {}: {}", len, width);
-        width
-    }
-    fn touch(&self, item: touchbar::ItemId, idx: u32) {
-        info!("scrub touch: {}", idx);
-        
-        self.touch_tx.send(TouchbarCommand {
-            event: TouchbarEvent::SelectDevice,
-            item: item,
-            value: None
-        });
-    }
 }
 
 impl TStatusBar for OSXStatusBar {
@@ -144,30 +63,17 @@ impl TStatusBar for OSXStatusBar {
         let mut bar;
         unsafe {
             let app = NSApp();
-            let (touch_tx,touch_rx) = channel::<TouchbarCommand>();
             let status_bar = NSStatusBar::systemStatusBar(nil);
             let date_cls = Class::get("NSDate").unwrap();
-            let scrubber = Rc::new(TouchbarHandler {
-                devices: RefCell::new(vec!["one".to_string(), "two".to_string(),
-                                           "a little bit longer one".to_string(),
-                                           "three".to_string(),
-                                           "this one is really quite a bit longer than the others".to_string()]),
-                //Vec::<String>::new(),
-                touch_tx: touch_tx,
-            });
             bar = OSXStatusBar {
                 app: app,
                 status_bar_item: status_bar.statusItemWithLength_(NSVariableStatusItemLength),
                 menu_bar: NSMenu::new(nil),
                 object: NSObj::alloc(tx).setup(),
-                touchbar: Touchbar::alloc(),
                 pool: Cell::new(nil),
                 run_count: Cell::new(0),
                 run_mode: NSString::alloc(nil).init_str("kCFRunLoopDefaultMode"),
                 run_date: msg_send![date_cls, distantPast],
-                touch_rx: touch_rx,
-                label: Cell::new(0),
-                scrubber: scrubber.clone(),
             };
             // Don't become foreground app on launch
             bar.app.setActivationPolicy_(NSApplicationActivationPolicyAccessory);
@@ -197,7 +103,6 @@ impl TStatusBar for OSXStatusBar {
             #[cfg(feature = "mac_white_icon")]
             let _ = msg_send![icon, setTemplate: YES]; // enable to make icon white
             bar.status_bar_item.button().setImage_(icon);
-            bar.touchbar.set_icon(&img_path);
             let _ = msg_send![img, release];
             let _ = msg_send![icon, release];
 
@@ -218,66 +123,9 @@ impl TStatusBar for OSXStatusBar {
                     cb(sender, &s.tx);
                 }
             ));
-
-            let barid = bar.touchbar.create_bar();
-            let scrub1 = scrubber.clone();
-            let b1id = bar.touchbar.create_button(None, Some("hi1"), Box::new(move |s| {scrub1.play(s)}));
-            let b2id = bar.touchbar.create_button(None, Some("hi2"), Box::new(move |_| {}));
-
-            let s2id = bar.touchbar.create_text_scrubber(scrubber.clone());
-            bar.touchbar.select_scrubber_item(s2id, 3);
-
-            let sl1id = bar.touchbar.create_slider(0.0, 50.0, Box::new(move |s,v| {info!("Slid to: {}", v);}));
-            bar.touchbar.update_slider(sl1id, 15.0);
-
-            let popid = bar.touchbar.create_bar();
-            let p1id = bar.touchbar.create_popover_item(None, Some("heyhey"), popid);
-            let b3id = bar.touchbar.create_button(None, Some("hi3"), Box::new(move |_| {}));
-            bar.touchbar.add_items_to_bar(popid, vec![b3id, sl1id, s2id]);
-
-            let s1id = bar.touchbar.create_text_scrubber(scrubber.clone());
-            bar.touchbar.select_scrubber_item(s1id, 1);
-
-            let l1id = bar.touchbar.create_label("froop doop poop\nsecond level");
-
-            bar.touchbar.add_items_to_bar(barid, vec![b1id, b2id, p1id, l1id, s1id]);
-            bar.touchbar.set_bar_as_root(barid);
-
-            // for fuckery
-            bar.label.set(s1id);
-
-            let _: () = msg_send![app, finishLaunching];
-            bar.touchbar.enable();
         }
         bar
     }    
-    fn touchbar(&mut self) {
-        info!("Touchbar fucker!");
-
-        self.scrubber.devices.borrow_mut().push("a new device!".to_string());
-        let l1id = self.label.get();
-        //self.touchbar.select_scrubber_item(l1id, 0);
-        self.touchbar.refresh_scrubber(l1id);
-        //self.touchbar.update_label(l1id);
-        unsafe {
-
-            //let barid = self.touchbar.create_bar();
-            //let text = NSString::alloc(nil).init_str("hi1");
-            //let b1id = self.touchbar.create_button(nil, text, Box::new(move |_| {}));
-            //let text = NSString::alloc(nil).init_str("hi2");
-            //let b2id = self.touchbar.create_button(nil, text, Box::new(move |_| {}));
-            //
-            //let popid = self.touchbar.create_bar();
-            //let p1id = self.touchbar.create_popover_item(popid);
-            //let text = NSString::alloc(nil).init_str("hi3");
-            //let b3id = self.touchbar.create_button(nil, text, Box::new(move |_| {}));
-            //self.touchbar.add_items_to_bar(popid, vec![b3id]);
-            //
-            ////bar.touchbar.add_items_to_bar(barid, vec![b1id, b2id, p1id]);
-            //self.touchbar.add_items_to_bar(barid, vec![b1id]);
-            //self.touchbar.set_bar_as_root(barid);
-        }
-    }
     fn can_redraw(&mut self) -> bool {
         true
     }
@@ -369,15 +217,6 @@ impl TStatusBar for OSXStatusBar {
     }
     fn run(&mut self, block: bool) {
         loop {
-            if let Ok(cmd) = self.touch_rx.try_recv() {
-                match cmd.event {
-                    TouchbarEvent::Play => {
-                        info!("PLAY on main thread");
-                        
-                    },
-                    _ => {}
-                }
-            }
             unsafe {
                 let run_count = self.run_count.get();
                 // Create a new release pool every once in a while, draining the old one
