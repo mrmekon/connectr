@@ -39,7 +39,7 @@ use std::process;
 // How often to refresh Spotify state (if nothing triggers a refresh earlier).
 pub const REFRESH_PERIOD: i64 = 30;
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
 enum CallbackAction {
     SelectDevice,
     PlayPause,
@@ -71,15 +71,20 @@ struct ConnectrApp {
 }
 
 struct TouchbarScrubberData {
-    entries: RefCell<Vec<String>>,
+    action: CallbackAction,
+    entries: RefCell<Vec<(String,String)>>,
+    tx: Sender<String>,
 }
 impl TouchbarScrubberData {
-    fn new() -> Rc<TouchbarScrubberData> {
+    fn new(action: CallbackAction,
+           tx: Sender<String>) -> Rc<TouchbarScrubberData> {
         Rc::new(TouchbarScrubberData {
-            entries: RefCell::new(Vec::<String>::new())
+            action: action,
+            entries: RefCell::new(Vec::<(String,String)>::new()),
+            tx: tx,
         })
     }
-    fn fill(&self, items: Vec<String>) {
+    fn fill(&self, items: Vec<(String,String)>) {
         let mut entries = self.entries.borrow_mut();
         entries.clear();
         for item in items {
@@ -92,18 +97,26 @@ impl TScrubberData for TouchbarScrubberData {
         self.entries.borrow().len() as u32
     }
     fn text(&self, _item: rubrail::ItemId, idx: u32) -> String {
-        self.entries.borrow()[idx as usize].to_string()
+        self.entries.borrow()[idx as usize].0.to_string()
     }
     fn width(&self, _item: rubrail::ItemId, idx: u32) -> u32 {
         // 10px per character + some padding seems to work nicely for the default
         // font.  no idea what it's like on other machines.  does the touchbar
         // font change? ¯\_(ツ)_/¯
-        let len = self.entries.borrow()[idx as usize].len() as u32;
+        let len = self.entries.borrow()[idx as usize].0.len() as u32;
         let width = len * 8 + 20;
         width
     }
-    fn touch(&self, _item: rubrail::ItemId, idx: u32) {
+    fn touch(&self, ui_item: rubrail::ItemId, idx: u32) {
         info!("scrub touch: {}", idx);
+        if let Some(item) = self.entries.borrow().get(idx as usize) {
+            let cmd = MenuCallbackCommand {
+                action: self.action,
+                sender: ui_item,
+                data: item.1.clone(),
+            };
+            let _ = self.tx.send(serde_json::to_string(&cmd).unwrap());
+        }
     }
 }
 
@@ -180,7 +193,8 @@ impl TouchbarUI {
             let _ = tx_clone.send(serde_json::to_string(&cmd).unwrap());
         }));
 
-        let preset_scrubber_data = TouchbarScrubberData::new();
+        let preset_scrubber_data = TouchbarScrubberData::new(CallbackAction::Preset,
+                                                             tx.clone());
         let preset_scrubber = touchbar.create_text_scrubber(preset_scrubber_data.clone());
         let preset_bar = touchbar.create_bar();
         touchbar.add_items_to_bar(&preset_bar, vec![preset_scrubber]);
@@ -189,7 +203,8 @@ impl TouchbarUI {
             Some(&format!("{:-^35}", "Presets")),
             &preset_bar);
 
-        let device_scrubber_data = TouchbarScrubberData::new();
+        let device_scrubber_data = TouchbarScrubberData::new(CallbackAction::SelectDevice,
+                                                             tx.clone());
         let device_scrubber = touchbar.create_text_scrubber(device_scrubber_data.clone());
         let device_bar = touchbar.create_bar();
         touchbar.add_items_to_bar(&device_bar, vec![device_scrubber]);
@@ -284,7 +299,6 @@ impl TouchbarUI {
     fn set_selected_device(&mut self, selected: u32) {
         self.touchbar.select_scrubber_item(&self.device_scrubber, selected);
     }
-
 }
 
 fn play_action_label(is_playing: bool) -> &'static str {
@@ -295,6 +309,7 @@ fn play_action_label(is_playing: bool) -> &'static str {
 }
 
 fn update_state(app: &mut ConnectrApp, spotify: &mut connectr::SpotifyConnectr) -> bool {
+    // TODO: make this async.  blocks UI on slow network responses
     info!("Request update");
     let dev_list = spotify.request_device_list();
     let player_state = spotify.request_player_state();
@@ -377,8 +392,10 @@ fn fill_menu<T: TStatusBar>(app: &mut ConnectrApp, spotify: &mut connectr::Spoti
     status.add_separator();
     {
         let presets = spotify.get_presets();
-        let preset_names: Vec<String> = presets.into_iter().map(|p| {p.0.clone()}).collect();
-        touchbar.preset_data.fill(preset_names);
+        let preset_tuples: Vec<(String,String)> = presets.into_iter().map(|p| {
+            (p.0.clone(), p.1.clone())
+        }).collect();
+        touchbar.preset_data.fill(preset_tuples);
         for preset in presets {
             let ref name = preset.0;
             let uri = preset.1.clone();
@@ -400,8 +417,10 @@ fn fill_menu<T: TStatusBar>(app: &mut ConnectrApp, spotify: &mut connectr::Spoti
     status.add_separator();
     println!("Visible Devices:");
 
-    let device_names: Vec<String> = (*device_list).into_iter().map(|d| {d.name.clone()}).collect();
-    touchbar.device_data.fill(device_names);
+    let devices: Vec<(String,String)> = (*device_list).into_iter().map(|d| {
+        (d.name.clone(), d.id.clone().unwrap_or(String::new()))
+    }).collect();
+    touchbar.device_data.fill(devices);
 
     let selected_arr: Vec<bool> = (*device_list).into_iter().map(|d| {d.is_active}).collect();
     if let Ok(selected) = selected_arr.binary_search(&true) {
@@ -515,7 +534,6 @@ fn handle_callback<T: TStatusBar>(app: &mut ConnectrApp, spotify: &mut connectr:
                 let &(ref item, _) = dev;
                 status.unsel_item(*item as u64);
             }
-            status.sel_item(cmd.sender);
             // Spotify is broken.  Must be 'true', always starts playing.
             require(spotify.transfer(cmd.data.clone(), true));
         },
@@ -548,8 +566,6 @@ fn handle_callback<T: TStatusBar>(app: &mut ConnectrApp, spotify: &mut connectr:
             for item in volume {
                 status.unsel_item(*item as u64);
             }
-            // TODO: select correct volume some other way
-            //status.sel_item(cmd.sender);
         }
     }
 }
@@ -686,6 +702,7 @@ fn main() {
 fn require(response: SpotifyResponse) {
     match response.code.unwrap() {
         200 ... 299 => (),
+        // TODO: Don't panic
         _ => panic!("{}", response)
     }
     println!("Response: {}", response.code.unwrap());
