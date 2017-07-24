@@ -176,6 +176,7 @@ impl TouchbarUI {
             };
             let _ = tx_clone.send(serde_json::to_string(&cmd).unwrap());
         }));
+        touchbar.update_button_width(&prev_button, 40);
         let image = touchbar.create_image_from_template(ImageTemplate::PlayPauseTemplate);
         let tx_clone = tx.clone();
         let play_pause_button = touchbar.create_button(Some(&image), None, Box::new(move |s| {
@@ -186,6 +187,7 @@ impl TouchbarUI {
             };
             let _ = tx_clone.send(serde_json::to_string(&cmd).unwrap());
         }));
+        touchbar.update_button_width(&play_pause_button, 40);
         let image = touchbar.create_image_from_template(ImageTemplate::FastForwardTemplate);
         let tx_clone = tx.clone();
         let next_button = touchbar.create_button(Some(&image), None, Box::new(move |s| {
@@ -196,6 +198,7 @@ impl TouchbarUI {
             };
             let _ = tx_clone.send(serde_json::to_string(&cmd).unwrap());
         }));
+        touchbar.update_button_width(&next_button, 40);
 
         let preset_scrubber_data = TouchbarScrubberData::new(CallbackAction::Preset,
                                                              tx.clone());
@@ -220,7 +223,8 @@ impl TouchbarUI {
         touchbar.update_button_width(&device_popover, 200);
 
         let tx_clone = tx.clone();
-        let volume_slider = touchbar.create_slider(0., 100., false, Box::new(move |s,v| {
+        let volume_slider = touchbar.create_slider(0., 100., Some("Volume"),
+                                                   false, Box::new(move |s,v| {
             let cmd = MenuCallbackCommand {
                 action: CallbackAction::Volume,
                 sender: s,
@@ -230,11 +234,13 @@ impl TouchbarUI {
         }));
         let volume_bar = touchbar.create_bar();
         touchbar.add_items_to_bar(&volume_bar, vec![volume_slider]);
-        let image = touchbar.create_image_from_template(ImageTemplate::AudioOutputVolumeMediumTemplate);
+        let image = touchbar.create_image_from_template(
+            ImageTemplate::AudioOutputVolumeMediumTemplate);
         let volume_popover = touchbar.create_popover_item(
             Some(&image),
             None,
             &volume_bar);
+        touchbar.update_button_width(&volume_popover, 40);
 
         let submenu_bar = touchbar.create_bar();
         touchbar.add_items_to_bar(&submenu_bar, vec![
@@ -244,20 +250,23 @@ impl TouchbarUI {
         let image = touchbar.create_image_from_template(ImageTemplate::GoUpTemplate);
         let submenu_popover = touchbar.create_popover_item(
             Some(&image),
-            None,
+            Some("More"),//None,
             &submenu_bar);
 
+        // TODO: search button (SearchTemplate)
+        // TODO: alarm button (AlarmTemplate)
+
         let flexible_space = touchbar.create_spacer(SpacerType::Flexible);
-        let flexible_space2 = touchbar.create_spacer(SpacerType::Flexible);
+        let small_space = touchbar.create_spacer(SpacerType::Small);
         let root_bar = touchbar.create_bar();
         touchbar.add_items_to_bar(&root_bar, vec![
             playing_label,
             prev_button,
             play_pause_button,
             next_button,
-            flexible_space,
+            small_space,
             volume_popover,
-            flexible_space2,
+            flexible_space,
             submenu_popover,
         ]);
         touchbar.set_bar_as_root(root_bar);
@@ -303,6 +312,13 @@ impl TouchbarUI {
     }
     fn set_selected_device(&mut self, selected: u32) {
         self.touchbar.select_scrubber_item(&self.device_scrubber, selected);
+    }
+    fn update_play_button(&mut self, is_playing: bool) {
+        let image = match is_playing {
+            true => self.touchbar.create_image_from_template(ImageTemplate::PauseTemplate),
+            false => self.touchbar.create_image_from_template(ImageTemplate::PlayTemplate),
+        };
+        self.touchbar.update_button(&self.play_pause_button, Some(&image), None);
     }
 }
 
@@ -364,6 +380,7 @@ fn fill_menu<T: TStatusBar>(app: &mut ConnectrApp,
             let _ = tx.send(serde_json::to_string(&cmd).unwrap());
         });
         app.menu.play = status.add_item(&play_str, cb, false);
+        touchbar.update_play_button(is_playing);
 
         let cb: NSCallback = Box::new(move |sender, tx| {
             let cmd = MenuCallbackCommand {
