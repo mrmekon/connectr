@@ -14,6 +14,7 @@ use rubrail::SpacerType;
 extern crate ctrlc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
+use std::sync::RwLock;
 
 #[macro_use]
 extern crate log;
@@ -21,6 +22,7 @@ extern crate log4rs;
 
 use std::env;
 use std::ptr;
+use std::thread;
 use std::thread::sleep;
 use std::time::Duration;
 use std::sync::mpsc::channel;
@@ -38,6 +40,13 @@ use std::process;
 
 // How often to refresh Spotify state (if nothing triggers a refresh earlier).
 pub const REFRESH_PERIOD: i64 = 30;
+
+#[allow(dead_code)]
+enum RefreshTime {
+    Now,   // immediately
+    Soon,  // after ~1 sec
+    Later, // don't change whatever the current schedule is
+}
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy)]
 enum CallbackAction {
@@ -66,8 +75,7 @@ struct MenuItems {
 }
 struct ConnectrApp {
     menu: MenuItems,
-    device_list: Option<connectr::ConnectDeviceList>,
-    player_state: Option<connectr::PlayerState>,
+    // TODO: move touchbar in
 }
 
 struct TouchbarScrubberData {
@@ -123,8 +131,6 @@ impl TScrubberData for TouchbarScrubberData {
 #[allow(dead_code)]
 struct TouchbarUI {
     touchbar: Touchbar,
-    tx: Sender<String>,
-    rx: Receiver<String>,
 
     root_bar: rubrail::BarId,
     playing_label: rubrail::ItemId,
@@ -151,8 +157,7 @@ struct TouchbarUI {
 }
 
 impl TouchbarUI {
-    fn init() -> TouchbarUI {
-        let (tx,rx) = channel::<String>();
+    fn init(tx: Sender<String>) -> TouchbarUI {
         let mut touchbar = Touchbar::alloc("cnr");
         let icon = rubrail::util::bundled_resource_path("connectr_80px_300dpi", "png");
         if let Some(path) = icon {
@@ -200,8 +205,9 @@ impl TouchbarUI {
         touchbar.add_items_to_bar(&preset_bar, vec![preset_scrubber]);
         let preset_popover = touchbar.create_popover_item(
             None,
-            Some(&format!("{:-^35}", "Presets")),
+            Some(&format!("{}", "Presets")),
             &preset_bar);
+        touchbar.update_button_width(&preset_popover, 200);
 
         let device_scrubber_data = TouchbarScrubberData::new(CallbackAction::SelectDevice,
                                                              tx.clone());
@@ -210,11 +216,12 @@ impl TouchbarUI {
         touchbar.add_items_to_bar(&device_bar, vec![device_scrubber]);
         let device_popover = touchbar.create_popover_item(
             None,
-            Some(&format!("{:-^35}", "Devices")),
+            Some(&format!("{}", "Devices")),
             &device_bar);
+        touchbar.update_button_width(&device_popover, 200);
 
         let tx_clone = tx.clone();
-        let volume_slider = touchbar.create_slider(0., 100., Box::new(move |s,v| {
+        let volume_slider = touchbar.create_slider(0., 100., false, Box::new(move |s,v| {
             let cmd = MenuCallbackCommand {
                 action: CallbackAction::Volume,
                 sender: s,
@@ -258,8 +265,6 @@ impl TouchbarUI {
 
         TouchbarUI {
             touchbar: touchbar,
-            tx: tx,
-            rx: rx,
 
             root_bar: root_bar,
             playing_label: playing_label,
@@ -286,8 +291,9 @@ impl TouchbarUI {
         }
     }
     fn update_now_playing(&mut self, track: &str, artist: &str) {
-        let text = format!("{:<50}\n{:<50}", track, artist);
+        let text = format!("{}\n{}", track, artist);
         self.touchbar.update_label(&self.playing_label, &text);
+        self.touchbar.update_label_width(&self.playing_label, 200)
     }
     fn update_volume(&mut self, volume: u32) {
         self.touchbar.update_slider(&self.volume_slider, volume as f64);
@@ -308,26 +314,20 @@ fn play_action_label(is_playing: bool) -> &'static str {
     }
 }
 
-fn update_state(app: &mut ConnectrApp, spotify: &mut connectr::SpotifyConnectr) -> bool {
-    // TODO: make this async.  blocks UI on slow network responses
-    info!("Request update");
-    let dev_list = spotify.request_device_list();
-    let player_state = spotify.request_player_state();
-    match dev_list {
-        Some(_) => { app.device_list = dev_list },
-        None => { return false },
-    }
-    match player_state {
-        Some(_) => { app.player_state = player_state },
-        None => { return false },
-    }
-    true
-}
-
-fn fill_menu<T: TStatusBar>(app: &mut ConnectrApp, spotify: &mut connectr::SpotifyConnectr,
-                            status: &mut T, touchbar: &mut TouchbarUI) {
-    let ref device_list = app.device_list.as_ref().unwrap();
-    let ref player_state = app.player_state.as_ref().unwrap();
+fn fill_menu<T: TStatusBar>(app: &mut ConnectrApp,
+                            spotify: &SpotifyThread,
+                            status: &mut T,
+                            touchbar: &mut TouchbarUI) {
+    let device_list = spotify.device_list.read().unwrap();
+    let player_state = spotify.player_state.read().unwrap();
+    let presets = spotify.presets.read().unwrap();
+    if device_list.is_none() ||
+        player_state.is_none() {
+            // TODO: handle empty groups
+            return;
+        }
+    let device_list = device_list.as_ref().unwrap();
+    let player_state = player_state.as_ref().unwrap();
 
     println!("Playback State:\n{}", player_state);
     let play_str = format!("{}\n{}\n{}",
@@ -391,12 +391,11 @@ fn fill_menu<T: TStatusBar>(app: &mut ConnectrApp, spotify: &mut connectr::Spoti
     status.add_label("Presets:");
     status.add_separator();
     {
-        let presets = spotify.get_presets();
-        let preset_tuples: Vec<(String,String)> = presets.into_iter().map(|p| {
+        let preset_tuples: Vec<(String,String)> = presets.iter().map(|p| {
             (p.0.clone(), p.1.clone())
         }).collect();
         touchbar.preset_data.fill(preset_tuples);
-        for preset in presets {
+        for preset in presets.iter() {
             let ref name = preset.0;
             let uri = preset.1.clone();
             let cb: NSCallback = Box::new(move |sender, tx| {
@@ -417,12 +416,12 @@ fn fill_menu<T: TStatusBar>(app: &mut ConnectrApp, spotify: &mut connectr::Spoti
     status.add_separator();
     println!("Visible Devices:");
 
-    let devices: Vec<(String,String)> = (*device_list).into_iter().map(|d| {
+    let devices: Vec<(String,String)> = device_list.into_iter().map(|d| {
         (d.name.clone(), d.id.clone().unwrap_or(String::new()))
     }).collect();
     touchbar.device_data.fill(devices);
 
-    let selected_arr: Vec<bool> = (*device_list).into_iter().map(|d| {d.is_active}).collect();
+    let selected_arr: Vec<bool> = device_list.into_iter().map(|d| {d.is_active}).collect();
     if let Ok(selected) = selected_arr.binary_search(&true) {
         touchbar.set_selected_device(selected as u32);
     }
@@ -430,7 +429,7 @@ fn fill_menu<T: TStatusBar>(app: &mut ConnectrApp, spotify: &mut connectr::Spoti
 
     let mut cur_volume: u32 = 0;
     let mut cur_volume_exact: u32 = 0;
-    for dev in *device_list {
+    for dev in device_list {
         println!("{}", dev);
         let id = match dev.id {
             Some(ref id) => id.clone(),
@@ -484,7 +483,7 @@ fn fill_menu<T: TStatusBar>(app: &mut ConnectrApp, spotify: &mut connectr::Spoti
     status.add_quit("Exit");
 }
 
-fn clear_menu<T: TStatusBar>(app: &mut ConnectrApp, _: &mut connectr::SpotifyConnectr, status: &mut T) {
+fn clear_menu<T: TStatusBar>(app: &mut ConnectrApp, status: &mut T) {
     app.menu = MenuItems {
         device: Vec::<(MenuItem, String)>::new(),
         play: ptr::null_mut(),
@@ -524,31 +523,22 @@ fn create_logger() {
     let _ = log4rs::init_config(config).unwrap();
 }
 
-fn handle_callback<T: TStatusBar>(app: &mut ConnectrApp, spotify: &mut connectr::SpotifyConnectr,
-                   status: &mut T, cmd: &MenuCallbackCommand) {
+fn handle_callback(player_state: Option<&connectr::PlayerState>,
+                   spotify: &mut connectr::SpotifyConnectr,
+                   cmd: &MenuCallbackCommand) -> RefreshTime {
     info!("Executed action: {:?}", cmd.action);
+    let refresh = RefreshTime::Soon;
     match cmd.action {
         CallbackAction::SelectDevice => {
-            let device = &app.menu.device;
-            for dev in device {
-                let &(ref item, _) = dev;
-                status.unsel_item(*item as u64);
-            }
-            // Spotify is broken.  Must be 'true', always starts playing.
             require(spotify.transfer(cmd.data.clone(), true));
         },
         CallbackAction::PlayPause => {
-            let fresh_player_state = spotify.request_player_state();
-            let player_state = match fresh_player_state {
-                Some(ref state) => state,
-                None => app.player_state.as_ref().unwrap(),
-            };
-            match player_state.is_playing {
-                true => {require(spotify.pause());},
-                false => {require(spotify.play(None));},
+            if let Some(player_state) = player_state {
+                match player_state.is_playing {
+                    true => {require(spotify.pause());},
+                    false => {require(spotify.play(None));},
+                }
             }
-            let play_str = play_action_label(!player_state.is_playing);
-            status.update_item(app.menu.play, play_str);
         },
         CallbackAction::Preset => {
             play_uri(spotify, None, Some(&cmd.data));
@@ -562,16 +552,13 @@ fn handle_callback<T: TStatusBar>(app: &mut ConnectrApp, spotify: &mut connectr:
         CallbackAction::Volume => {
             let vol = cmd.data.parse::<u32>().unwrap();
             require(spotify.volume(vol));
-            let volume = &app.menu.volume;
-            for item in volume {
-                status.unsel_item(*item as u64);
-            }
         }
     }
+    refresh
 }
 
-fn refresh_time(app: &mut ConnectrApp, now: i64) -> i64 {
-    let refresh_offset = match app.player_state.as_ref() {
+fn refresh_time(player_state: Option<&connectr::PlayerState>, now: i64) -> i64 {
+    let refresh_offset = match player_state {
         Some(ref state) => {
             match state.is_playing {
                 true => {
@@ -611,6 +598,94 @@ fn find_wine_path() -> Option<std::path::PathBuf> {
     None
 }
 
+struct SpotifyThread {
+    #[allow(dead_code)]
+    handle: std::thread::JoinHandle<()>,
+    #[allow(dead_code)]
+    tx: Sender<String>,
+    rx: Receiver<String>,
+    device_list: Arc<RwLock<Option<connectr::ConnectDeviceList>>>,
+    player_state: Arc<RwLock<Option<connectr::PlayerState>>>,
+    presets: Arc<RwLock<Vec<(String,String)>>>,
+}
+
+fn create_spotify_thread(rx_cmd: Receiver<String>) -> SpotifyThread {
+    let (tx_in,rx_in) = channel::<String>();
+    let (tx_out,rx_out) = channel::<String>();
+    let device_list = Arc::new(RwLock::new(None));
+    let player_state = Arc::new(RwLock::new(None));
+    let presets = Arc::new(RwLock::new(vec![]));
+    let thread_device_list = device_list.clone();
+    let thread_player_state = player_state.clone();
+    let thread_presets = presets.clone();
+    let thread = thread::spawn(move || {
+        let tx = tx_out;
+        let rx = rx_in;
+        let rx_cmd = rx_cmd;
+        let mut refresh_time_utc = 0;
+        let mut spotify = connectr::SpotifyConnectr::new();
+        let device_list = thread_device_list;
+        let player_state = thread_player_state;
+        let presets = thread_presets;
+        info!("Created Spotify controller.");
+        spotify.connect();
+        info!("Created Spotify connection.");
+        spotify.set_target_device(None);
+        {
+            let mut preset_writer = presets.write().unwrap();
+            *preset_writer = spotify.get_presets().clone();
+            let _ = tx.send(String::new());
+        }
+        loop {
+            if rx.try_recv().is_ok() {
+                // Main thread tells us to shutdown
+                break;
+            }
+            let now = time::now_utc().to_timespec().sec as i64;
+            spotify.await_once(false);
+            // Block for 200ms while waiting for UI input.  This throttles the
+            // thread CPU usage, at the expense of slight delays for metadata
+            // updates.  Optimizes for UI response.
+            if let Ok(s) = rx_cmd.recv_timeout(Duration::from_millis(200)) {
+                info!("Received {}", s);
+                let cmd: MenuCallbackCommand = serde_json::from_str(&s).unwrap();
+                let refresh_strategy =  handle_callback(player_state.read().unwrap().as_ref(),
+                                                        &mut spotify, &cmd);
+                refresh_time_utc = match refresh_strategy {
+                    RefreshTime::Now => now - 1,
+                    RefreshTime::Soon => now + 1,
+                    RefreshTime::Later => refresh_time_utc,
+                }
+            }
+
+            if now > refresh_time_utc {
+                info!("Request update");
+                let dev_list = spotify.request_device_list();
+                {
+                    let mut dev_writer = device_list.write().unwrap();
+                    *dev_writer = dev_list;
+                }
+                let play_state = spotify.request_player_state();
+                {
+                    let mut player_writer = player_state.write().unwrap();
+                    *player_writer = play_state;
+                }
+                refresh_time_utc = refresh_time(player_state.read().unwrap().as_ref(), now);
+                info!("Refreshed Spotify state.");
+                let _ = tx.send(String::new()); // inform main thread
+            }
+        }
+    });
+    SpotifyThread {
+        handle: thread,
+        tx: tx_in,
+        rx: rx_out,
+        device_list: device_list,
+        player_state: player_state,
+        presets: presets,
+    }
+}
+
 fn main() {
     create_logger();
     info!("Started Connectr");
@@ -633,19 +708,13 @@ fn main() {
             preset: Vec::<MenuItem>::new(),
             volume: Vec::<MenuItem>::new(),
         },
-        device_list: None,
-        player_state: None,
     };
-    let mut refresh_time_utc = 0;
     let (tx,rx) = channel::<String>();
-    let mut spotify = connectr::SpotifyConnectr::new();
-    info!("Created Spotify controller.");
-    spotify.connect();
-    info!("Created Spotify connection.");
-    spotify.set_target_device(None);
-    let mut status = connectr::StatusBar::new(tx);
+    let spotify_thread = create_spotify_thread(rx);
+
+    let mut status = connectr::StatusBar::new(tx.clone());
     info!("Created status bar.");
-    let mut touchbar = TouchbarUI::init();
+    let mut touchbar = TouchbarUI::init(tx);
     info!("Created touchbar.");
 
     let mut tiny: Option<process::Child> = None;
@@ -666,31 +735,12 @@ fn main() {
     }
 
     while running.load(Ordering::SeqCst) {
-        let now = time::now_utc().to_timespec().sec as i64;
-        if now > refresh_time_utc && status.can_redraw() && update_state(&mut app, &mut spotify) {
-            // Redraw the whole menu once every 60 seconds, or sooner if a
-            // command is processed later.
-            clear_menu(&mut app, &mut spotify, &mut status);
-            fill_menu(&mut app, &mut spotify, &mut status, &mut touchbar);
-            refresh_time_utc = refresh_time(&mut app, now);
-            info!("Refreshed Spotify state.");
-        }
-
-        spotify.await_once(false);
-        if let Ok(s) = rx.try_recv() {
-            println!("Received {}", s);
-            let cmd: MenuCallbackCommand = serde_json::from_str(&s).unwrap();
-            handle_callback(&mut app, &mut spotify, &mut status, &cmd);
-            refresh_time_utc = now + 1;
-        }
-        if let Ok(s) = touchbar.rx.try_recv() {
-            println!("Received {}", s);
-            let cmd: MenuCallbackCommand = serde_json::from_str(&s).unwrap();
-            handle_callback(&mut app, &mut spotify, &mut status, &cmd);
-            refresh_time_utc = now + 1;
+        if spotify_thread.rx.recv_timeout(Duration::from_millis(100)).is_ok() {
+            // TODO: && status.can_redraw()
+            clear_menu(&mut app, &mut status);
+            fill_menu(&mut app, &spotify_thread, &mut status, &mut touchbar);
         }
         status.run(false);
-        sleep(Duration::from_millis(100));
     }
     info!("Exiting.\n");
     if let Some(mut tiny_proc) = tiny {
