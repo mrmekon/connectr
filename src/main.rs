@@ -23,7 +23,6 @@ extern crate log4rs;
 use std::env;
 use std::ptr;
 use std::thread;
-use std::thread::sleep;
 use std::time::Duration;
 use std::sync::mpsc::channel;
 use std::sync::mpsc::{Sender, Receiver};
@@ -751,11 +750,9 @@ fn main() {
 
 fn require(response: SpotifyResponse) {
     match response.code.unwrap() {
-        200 ... 299 => (),
-        // TODO: Don't panic
-        _ => panic!("{}", response)
+        200 ... 299 => { info!("Response: {}", response.code.unwrap()); },
+        _ => { warn!("Spotify action failed! ({})", response); }
     }
-    println!("Response: {}", response.code.unwrap());
 }
 
 fn play_uri(spotify: &mut connectr::SpotifyConnectr, device: Option<&str>, uri: Option<&str>) {
