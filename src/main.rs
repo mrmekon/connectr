@@ -301,7 +301,7 @@ impl TouchbarUI {
     fn update_now_playing(&mut self, track: &str, artist: &str) {
         let text = format!("{}\n{}", track, artist);
         self.touchbar.update_label(&self.playing_label, &text);
-        self.touchbar.update_label_width(&self.playing_label, 200)
+        self.touchbar.update_label_width(&self.playing_label, 250)
     }
     fn update_volume(&mut self, volume: u32) {
         self.touchbar.update_slider(&self.volume_slider, volume as f64);
