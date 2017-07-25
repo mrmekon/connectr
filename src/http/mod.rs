@@ -128,7 +128,7 @@ pub fn http(url: &str, query: &str, body: &str,
                 Err(x) => {
                     let result: Result<String,String> = Err(x.description().to_string());
                     #[cfg(feature = "verbose_http")]
-                    println!("HTTP response: err: {}", x.description().to_string());
+                    warn!("HTTP response: err: {}", x.description().to_string());
                     return HttpResponse {code: response, data: result }
                 }
                 _ => {}
@@ -144,7 +144,7 @@ pub fn http(url: &str, query: &str, body: &str,
         Err(x) => { Err(x.utf8_error().description().to_string()) }
     };
     #[cfg(feature = "verbose_http")]
-    println!("HTTP response: {}", result.clone().unwrap());
+    info!("HTTP response: {}", result.clone().unwrap());
     HttpResponse {code: response, data: result }
 }
 

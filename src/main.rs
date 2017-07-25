@@ -42,10 +42,12 @@ use std::process;
 pub const REFRESH_PERIOD: i64 = 30;
 
 #[allow(dead_code)]
+#[derive(PartialEq, Debug)]
 enum RefreshTime {
     Now,   // immediately
     Soon,  // after ~1 sec
     Later, // don't change whatever the current schedule is
+    Redraw, // instantly, with stale data
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy)]
@@ -56,6 +58,7 @@ enum CallbackAction {
     SkipPrev,
     Volume,
     Preset,
+    Redraw,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -128,12 +131,19 @@ impl TScrubberData for TouchbarScrubberData {
     }
 }
 
+enum TouchbarLabelState {
+    TrackArtist,
+    Track,
+    Artist,
+}
+
 #[allow(dead_code)]
 struct TouchbarUI {
     touchbar: Touchbar,
 
     root_bar: rubrail::BarId,
     playing_label: rubrail::ItemId,
+    label_state: Arc<RwLock<TouchbarLabelState>>,
     prev_button: rubrail::ItemId,
     play_pause_button: rubrail::ItemId,
     next_button: rubrail::ItemId,
@@ -165,6 +175,23 @@ impl TouchbarUI {
         }
 
         let playing_label = touchbar.create_label("");
+        let label_state = Arc::new(RwLock::new(TouchbarLabelState::TrackArtist));
+        let cb_label_state = label_state.clone();
+        let tx_clone = tx.clone();
+        touchbar.add_item_tap_gesture(&playing_label, 2, 1, Box::new(move |s| {
+            let mut state = cb_label_state.write().unwrap();
+            *state = match *state {
+                TouchbarLabelState::TrackArtist => TouchbarLabelState::Track,
+                TouchbarLabelState::Track => TouchbarLabelState::Artist,
+                TouchbarLabelState::Artist => TouchbarLabelState::TrackArtist,
+            };
+            let cmd = MenuCallbackCommand {
+                action: CallbackAction::Redraw,
+                sender: *s,
+                data: String::new(),
+            };
+            let _ = tx_clone.send(serde_json::to_string(&cmd).unwrap());
+        }));
 
         // Fade text color to green as finger swipes right across the label, and
         // add a solid white border indicating the label is 'selected' after a
@@ -304,6 +331,7 @@ impl TouchbarUI {
 
             root_bar: root_bar,
             playing_label: playing_label,
+            label_state: label_state,
             prev_button: prev_button,
             play_pause_button: play_pause_button,
             next_button: next_button,
@@ -327,7 +355,11 @@ impl TouchbarUI {
         }
     }
     fn update_now_playing(&mut self, track: &str, artist: &str) {
-        let text = format!("{}\n{}", track, artist);
+        let text = match *self.label_state.read().unwrap() {
+            TouchbarLabelState::TrackArtist =>  format!("{}\n{}", track, artist),
+            TouchbarLabelState::Track =>  format!("{}", track),
+            TouchbarLabelState::Artist =>  format!("{}", artist),
+        };
         self.touchbar.update_label(&self.playing_label, &text);
         self.touchbar.update_label_width(&self.playing_label, 250)
     }
@@ -372,25 +404,37 @@ fn fill_menu<T: TStatusBar>(app: &mut ConnectrApp,
     let device_list = device_list.as_ref().unwrap();
     let player_state = player_state.as_ref().unwrap();
 
+    let track = match player_state.item {
+        Some(ref item) => item.name.clone(),
+        _ => "unknown".to_string()
+    };
+    let artist = match player_state.item {
+        Some(ref item) => item.artists[0].name.clone(),
+        _ => "unknown".to_string()
+    };
+    let album = match player_state.item {
+        Some(ref item) => item.album.name.clone(),
+        _ => "unknown".to_string()
+    };
+
     println!("Playback State:\n{}", player_state);
-    let play_str = format!("{}\n{}\n{}",
-                           &player_state.item.name,
-                           &player_state.item.artists[0].name,
-                           &player_state.item.album.name);
+    let play_str = format!("{}\n{}\n{}", track, artist, album);
     status.set_tooltip(&play_str);
 
     status.add_label("Now Playing:");
     status.add_separator();
     //status.add_label(&player_state.item.name);
-    status.add_label(&format!("{:<50}", &player_state.item.name));
-    status.add_label(&format!("{:<50}", &player_state.item.artists[0].name));
-    status.add_label(&format!("{:<50}", &player_state.item.album.name));
-    touchbar.update_now_playing(&player_state.item.name,
-                                &player_state.item.artists[0].name);
+    status.add_label(&format!("{:<50}", track));
+    status.add_label(&format!("{:<50}", artist));
+    status.add_label(&format!("{:<50}", album));
+    touchbar.update_now_playing(&track, &artist);
 
-    let ms = player_state.item.duration_ms;
-    let min = ms / 1000 / 60;
-    let sec = (ms - (min * 60 * 1000)) / 1000;
+    let duration_ms = match player_state.item {
+        Some(ref item) => item.duration_ms,
+        _ => 0,
+    };
+    let min = duration_ms / 1000 / 60;
+    let sec = (duration_ms - (min * 60 * 1000)) / 1000;
     status.add_label(&format!("{:<50}", format!("{}:{:02}", min, sec)));
 
     status.add_label("");
@@ -571,7 +615,7 @@ fn handle_callback(player_state: Option<&connectr::PlayerState>,
                    spotify: &mut connectr::SpotifyConnectr,
                    cmd: &MenuCallbackCommand) -> RefreshTime {
     info!("Executed action: {:?}", cmd.action);
-    let refresh = RefreshTime::Soon;
+    let mut refresh = RefreshTime::Soon;
     match cmd.action {
         CallbackAction::SelectDevice => {
             require(spotify.transfer(cmd.data.clone(), true));
@@ -597,6 +641,9 @@ fn handle_callback(player_state: Option<&connectr::PlayerState>,
             let vol = cmd.data.parse::<u32>().unwrap();
             require(spotify.volume(vol));
         }
+        CallbackAction::Redraw => {
+            refresh = RefreshTime::Redraw;
+        }
     }
     refresh
 }
@@ -606,16 +653,20 @@ fn refresh_time(player_state: Option<&connectr::PlayerState>, now: i64) -> i64 {
         Some(ref state) => {
             match state.is_playing {
                 true => {
+                    let duration_ms = match state.item {
+                        Some(ref item) => item.duration_ms,
+                        _ => 0,
+                    };
                     let track_end = match state.progress_ms {
                         Some(prog) => {
-                            if prog < state.item.duration_ms {
-                                state.item.duration_ms - prog
+                            if prog < duration_ms {
+                                duration_ms - prog
                             }
                             else {
                                 0
                             }
                         },
-                        None => state.item.duration_ms,
+                        None => duration_ms,
                     } as i64;
                     // Refresh 1 second after track ends
                     track_end/1000 + 1
@@ -698,7 +749,10 @@ fn create_spotify_thread(rx_cmd: Receiver<String>) -> SpotifyThread {
                 refresh_time_utc = match refresh_strategy {
                     RefreshTime::Now => now - 1,
                     RefreshTime::Soon => now + 1,
-                    RefreshTime::Later => refresh_time_utc,
+                    _ => refresh_time_utc,
+                };
+                if refresh_strategy == RefreshTime::Redraw {
+                    let _ = tx.send(String::new());
                 }
             }
 
