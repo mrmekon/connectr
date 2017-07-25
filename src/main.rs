@@ -10,6 +10,7 @@ use rubrail::TTouchbar;
 use rubrail::TScrubberData;
 use rubrail::ImageTemplate;
 use rubrail::SpacerType;
+use rubrail::SwipeState;
 
 extern crate ctrlc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -163,15 +164,42 @@ impl TouchbarUI {
             touchbar.set_icon(&path);
         }
 
-        let playing_label = touchbar.create_label(
-            "Now Playing Long Track                                  \n\
-             Now Playing Long Artist                                 ");
+        let playing_label = touchbar.create_label("");
+
+        // Fade text color to green as finger swipes right across the label, and
+        // add a solid white border indicating the label is 'selected' after a
+        // long enough slide.  Will be used for 'swipe to save' feature.
+        touchbar.add_item_swipe_gesture(&playing_label, Box::new(move |item,state,translation| {
+            let color: f64 = match translation.abs().trunc() as u32 {
+                t if t < 10 => 1.0,
+                t if t > 150 => 0.0,
+                _ => (45. / translation.abs()),
+            };
+            let rgba = match state {
+                SwipeState::Ended => (1.0, 1.0, 1.0, 1.0),
+                _ => {
+                    match translation.is_sign_positive() {
+                        true => (color, 1.0, color, 1.0),
+                        false => (1.0, 1.0, 1.0, 1.0),
+                    }
+                }
+            };
+            unsafe { rubrail::util::set_text_color(item, rgba.0, rgba.1, rgba.2, rgba.3); }
+            if translation > 170. && state != SwipeState::Ended {
+                unsafe { rubrail::util::set_bg_color(item, 1.0, 1.0, 1.0, 0.95); }
+                // TODO: save track as favorite
+            }
+            else {
+                unsafe { rubrail::util::set_bg_color(item, 0.0, 0.0, 0.0, 0.0); }
+            }
+        }));
+
         let image = touchbar.create_image_from_template(ImageTemplate::RewindTemplate);
         let tx_clone = tx.clone();
         let prev_button = touchbar.create_button(Some(&image), None, Box::new(move |s| {
             let cmd = MenuCallbackCommand {
                 action: CallbackAction::SkipPrev,
-                sender: s,
+                sender: *s,
                 data: String::new(),
             };
             let _ = tx_clone.send(serde_json::to_string(&cmd).unwrap());
@@ -182,7 +210,7 @@ impl TouchbarUI {
         let play_pause_button = touchbar.create_button(Some(&image), None, Box::new(move |s| {
             let cmd = MenuCallbackCommand {
                 action: CallbackAction::PlayPause,
-                sender: s,
+                sender: *s,
                 data: String::new(),
             };
             let _ = tx_clone.send(serde_json::to_string(&cmd).unwrap());
@@ -193,7 +221,7 @@ impl TouchbarUI {
         let next_button = touchbar.create_button(Some(&image), None, Box::new(move |s| {
             let cmd = MenuCallbackCommand {
                 action: CallbackAction::SkipNext,
-                sender: s,
+                sender: *s,
                 data: String::new(),
             };
             let _ = tx_clone.send(serde_json::to_string(&cmd).unwrap());
@@ -227,7 +255,7 @@ impl TouchbarUI {
                                                    false, Box::new(move |s,v| {
             let cmd = MenuCallbackCommand {
                 action: CallbackAction::Volume,
-                sender: s,
+                sender: *s,
                 data: (v as u32).to_string(),
             };
             let _ = tx_clone.send(serde_json::to_string(&cmd).unwrap());
