@@ -115,11 +115,11 @@ pub struct ConnectContext {
 
 #[derive(Deserialize, Debug)]
 pub struct PlayerState {
-    pub timestamp: u64,
+    pub timestamp: i64,
     pub device: ConnectDevice,
     pub progress_ms: Option<u32>,
     pub is_playing: bool,
-    pub item: ConnectPlaybackItem,
+    pub item: Option<ConnectPlaybackItem>,
     pub shuffle_state: bool,
     pub repeat_state: String,
     pub context: Option<ConnectContext>,
@@ -139,12 +139,20 @@ impl fmt::Display for PlayerState {
             Some(x) => (x as f64)/1000.0,
             None => 0.0,
         };
-        let duration: f64 = (self.item.duration_ms as f64) / 1000.0;
-        let progress: f64 = position/duration*100.0;
-        write!(f, "{} on {} [Volume {}%]\n{} <{}>\n{}s / {}s ({:.1}%)\n",
-               play_state, self.device.name, volume,
-               &self.item.name, &self.item.uri,
-               position, duration, progress)
+        if let Some(ref item) = self.item {
+            let duration: f64 = (item.duration_ms as f64) / 1000.0;
+            let progress: f64 = position/duration*100.0;
+            write!(f, "{} on {} [Volume {}%]\n{} <{}>\n{}s / {}s ({:.1}%)\n",
+                   play_state, self.device.name, volume,
+                   &item.name, &item.uri,
+                   position, duration, progress)
+        }
+        else {
+            write!(f, "{} on {} [Volume {}%]\n{} <{}>\n{}s / {}s ({:.1}%)\n",
+                   play_state, self.device.name, volume,
+                   "unknown", "unknown",
+                   position, 0, 0)
+        }
     }
 }
 
@@ -464,7 +472,10 @@ impl<'a> SpotifyConnectr<'a> {
         let json_response = http::http(self.api.get().player_state, "", "",
                                        http::HttpMethod::GET, self.bearer_token());
         match json_response.code {
-            Some(200) => serde_json::from_str(&json_response.data.unwrap()).unwrap(),
+            Some(200) => match serde_json::from_str(&json_response.data.unwrap()) {
+                Ok(json) => json,
+                Err(err) => { info!("json error: {}", err); None },
+            },
             Some(401) => {
                 warn!("Access token invalid.  Attempting to reauthenticate.");
                 self.refresh_access_token();
