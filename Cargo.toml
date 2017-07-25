@@ -52,25 +52,25 @@ ctrlc = "3.0.1"
 systray = {path = "deps/systray-rs", version="0.1.1-connectr"}
 
 [target."cfg(windows)".dependencies.rubrail]
-#version = "0.3"
-path = "deps/rubrail-rs"
-version="0.4.1-rc"
 default-features=false
+version = "0.5"
+#path = "deps/rubrail-rs"
+#version="0.5.1-rc"
 
 [target."cfg(all(unix, not(target_os = \"macos\")))".dependencies]
 
 [target."cfg(all(unix, not(target_os = \"macos\")))".dependencies.rubrail]
-#version = "0.3"
-path = "deps/rubrail-rs"
-version = "0.4.1-rc"
 default-features = false
+version = "0.5"
+#path = "deps/rubrail-rs"
+#version = "0.5.1-rc"
 
 [target."cfg(target_os = \"macos\")".dependencies]
 cocoa = "0.8.1"
 objc-foundation = "0.1.1"
 objc_id = "0.1"
-#rubrail = "0.3"
-rubrail = {path = "deps/rubrail-rs", version="0.4.1-rc"}
+rubrail = "0.5"
+#rubrail = {path = "deps/rubrail-rs", version="0.5.1-rc"}
 
 [target."cfg(target_os = \"macos\")".dependencies.objc]
 version = "0.2.2"
