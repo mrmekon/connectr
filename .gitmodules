@@ -6,4 +6,4 @@
 	url = https://github.com/mrmekon/systray-rs
 [submodule "deps/rubrail-rs"]
 	path = deps/rubrail-rs
-	url = git@github.com:mrmekon/rubrail-rs.git
+	url = https://github.com/mrmekon/rubrail-rs
