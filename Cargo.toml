@@ -16,6 +16,10 @@ build = "build.rs"
 name = "connectr"
 crate-type = ["rlib", "dylib"]
 
+[[bin]]
+name = "connectr"
+doc = false
+
 [profile.release]
 opt-level = 3
 debug = false
@@ -81,3 +85,11 @@ features = ["exception"]
 hyper = {path = "deps/hyper", version="0.11.0-a.0"}
 futures = "0.1.11"
 lazy_static = "0.2"
+
+[package.metadata.release]
+sign-commit = false
+upload-doc = true
+pre-release-commit-message = "Release {{version}}"
+dev-version-ext = "rc"
+tag-message = "Release {{version}}"
+doc-commit-message = "Release {{version}}"
