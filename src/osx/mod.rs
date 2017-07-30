@@ -3,7 +3,9 @@ mod rustnsobject;
 extern crate objc;
 extern crate objc_foundation;
 extern crate cocoa;
-extern crate libc;
+
+extern crate fruitbasket;
+use self::fruitbasket::FruitApp;
 
 pub use ::TStatusBar;
 pub use ::NSCallback;
@@ -12,11 +14,8 @@ use objc::runtime::Class;
 
 use self::cocoa::base::{nil, YES};
 use self::cocoa::appkit::NSStatusBar;
-use self::cocoa::foundation::{NSAutoreleasePool,NSString};
-use self::cocoa::appkit::{NSApp,
-                          NSApplication,
-                          NSApplicationActivationPolicyAccessory,
-                          NSMenu,
+use self::cocoa::foundation::NSString;
+use self::cocoa::appkit::{NSMenu,
                           NSMenuItem,
                           NSImage,
                           NSVariableStatusItemLength,
@@ -27,29 +26,15 @@ use self::rustnsobject::{NSObj, NSObjTrait, NSObjCallbackTrait};
 
 use std::sync::mpsc::Sender;
 use std::ptr;
-use std::cell::Cell;
 use std::ffi::CStr;
-use std::thread::sleep;
-use std::time::Duration;
-
-extern crate objc_id;
-use self::objc_id::Id;
 
 pub type Object = objc::runtime::Object;
 
 pub struct OSXStatusBar {
     object: NSObj,
-    app: *mut objc::runtime::Object,
+    app: FruitApp,
     status_bar_item: *mut objc::runtime::Object,
     menu_bar: *mut objc::runtime::Object,
-
-    // Run loop state
-    // Keeping these in persistent state instead of recalculating saves quite a
-    // bit of CPU during idle.
-    pool: Cell<*mut objc::runtime::Object>,
-    run_count: Cell<u64>,
-    run_mode: *mut objc::runtime::Object,
-    run_date: *mut objc::runtime::Object,
 }
 
 impl TStatusBar for OSXStatusBar {
@@ -57,21 +42,15 @@ impl TStatusBar for OSXStatusBar {
     fn new(tx: Sender<String>) -> OSXStatusBar {
         let mut bar;
         unsafe {
-            let app = NSApp();
+            let nsapp = FruitApp::new();
+            nsapp.set_activation_policy(fruitbasket::ActivationPolicy::Prohibited);
             let status_bar = NSStatusBar::systemStatusBar(nil);
-            let date_cls = Class::get("NSDate").unwrap();
             bar = OSXStatusBar {
-                app: app,
+                app: nsapp,
                 status_bar_item: status_bar.statusItemWithLength_(NSVariableStatusItemLength),
                 menu_bar: NSMenu::new(nil),
                 object: NSObj::alloc(tx).setup(),
-                pool: Cell::new(nil),
-                run_count: Cell::new(0),
-                run_mode: NSString::alloc(nil).init_str("kCFRunLoopDefaultMode"),
-                run_date: msg_send![date_cls, distantPast],
             };
-            // Don't become foreground app on launch
-            bar.app.setActivationPolicy_(NSApplicationActivationPolicyAccessory);
 
             // Default mode for menu bar items: blue highlight when selected
             msg_send![bar.status_bar_item, setHighlightMode:YES];
@@ -85,7 +64,7 @@ impl TStatusBar for OSXStatusBar {
             // See docs/icons.md for explanation of icon files.
             // TODO: Use the full list of search paths.
             let icon_name = "connectr_80px_300dpi";
-            let img_path = match bundled_resource_path(icon_name, "png") {
+            let img_path = match fruitbasket::FruitApp::bundled_resource_path(icon_name, "png") {
                 Some(path) => path,
                 None => format!("{}.png", icon_name),
             };
@@ -118,7 +97,6 @@ impl TStatusBar for OSXStatusBar {
                     cb(sender, &s.tx);
                 }
             ));
-            let _: () = msg_send![app, finishLaunching];
         }
         bar
     }
@@ -212,27 +190,11 @@ impl TStatusBar for OSXStatusBar {
         }
     }
     fn run(&mut self, block: bool) {
-        loop {
-            unsafe {
-                let run_count = self.run_count.get();
-                // Create a new release pool every once in a while, draining the old one
-                if run_count % 100 == 0 {
-                    let old_pool = self.pool.get();
-                    if run_count != 0 {
-                        let _ = msg_send![old_pool, drain];
-                    }
-                    self.pool.set(NSAutoreleasePool::new(nil));
-                }
-                let mode = self.run_mode;
-                let event: Id<Object> = msg_send![self.app, nextEventMatchingMask: -1
-                                                  untilDate: self.run_date inMode:mode dequeue: YES];
-                let _ = msg_send![self.app, sendEvent: event];
-                let _ = msg_send![self.app, updateWindows];
-                self.run_count.set(run_count + 1);
-            }
-            if !block { break; }
-            sleep(Duration::from_millis(50));
-        }
+        let period = match block {
+            true => fruitbasket::RunPeriod::Forever,
+            _ => fruitbasket::RunPeriod::Once,
+        };
+        self.app.run(period);
     }
 }
 
@@ -257,25 +219,7 @@ pub fn resource_dir() -> Option<String> {
         let cls = Class::get("NSBundle").unwrap();
         let bundle: *mut Object = msg_send![cls, mainBundle];
         let path: *mut Object = msg_send![bundle, resourcePath];
-        let cstr: *const libc::c_char = msg_send![path, UTF8String];
-        if cstr != ptr::null() {
-            let rstr = CStr::from_ptr(cstr).to_string_lossy().into_owned();
-            return Some(rstr);
-        }
-        None
-    }
-}
-
-pub fn bundled_resource_path(name: &str, extension: &str) -> Option<String> {
-    unsafe {
-        let cls = Class::get("NSBundle").unwrap();
-        let bundle: *mut Object = msg_send![cls, mainBundle];
-        let res = NSString::alloc(nil).init_str(name);
-        let ext = NSString::alloc(nil).init_str(extension);
-        let ini: *mut Object = msg_send![bundle, pathForResource:res ofType:ext];
-        let _ = msg_send![res, release];
-        let _ = msg_send![ext, release];
-        let cstr: *const libc::c_char = msg_send![ini, UTF8String];
+        let cstr: *const i8 = msg_send![path, UTF8String];
         if cstr != ptr::null() {
             let rstr = CStr::from_ptr(cstr).to_string_lossy().into_owned();
             return Some(rstr);
