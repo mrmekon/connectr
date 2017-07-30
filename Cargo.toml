@@ -1,15 +1,14 @@
 [package]
 name = "connectr"
 version = "0.1.1-rc"
-authors = [ "Trevor Bentley <trevor@trevorbentley.com>" ]
-
+authors = [ "Trevor Bentley <mrmekon@gmail.com>" ]
 description = "Spotify Connect library and systray/menubar application for controlling Spotify devices."
 keywords = ["spotify", "connect", "webapi", "systray", "menubar"]
 categories = ["api-bindings"]
 homepage = "https://github.com/mrmekon/connectr"
 repository = "https://github.com/mrmekon/connectr"
+documentation = "https://mrmekon.github.io/connectr/connectr/"
 license = "Apache-2.0"
-
 build = "build.rs"
 
 [lib]
@@ -45,10 +44,10 @@ rust-ini = "0.9"
 time = "0.1"
 timer = "0.1.6"
 chrono = "0.3.0"
-libc = "0.2"
 log = "0.3.7"
 log4rs = "0.6.3"
 ctrlc = "3.0.1"
+fruitbasket = "0.4"
 
 [target."cfg(windows)".dependencies]
 #systray = "0.1.1"
@@ -57,7 +56,7 @@ systray = {path = "deps/systray-rs", version="0.1.1-connectr"}
 
 [target."cfg(windows)".dependencies.rubrail]
 default-features=false
-version = "0.4"
+version = "0.5"
 #path = "deps/rubrail-rs"
 #version="0.4.3-rc"
 
@@ -65,7 +64,7 @@ version = "0.4"
 
 [target."cfg(all(unix, not(target_os = \"macos\")))".dependencies.rubrail]
 default-features = false
-version = "0.4"
+version = "0.5"
 #path = "deps/rubrail-rs"
 #version = "0.4.3-rc"
 
@@ -73,7 +72,7 @@ version = "0.4"
 cocoa = "0.9"
 objc-foundation = "0.1.1"
 objc_id = "0.1"
-rubrail = "0.4"
+rubrail = "0.5"
 #rubrail = {path = "deps/rubrail-rs", version="0.4.3-rc"}
 
 [target."cfg(target_os = \"macos\")".dependencies.objc]

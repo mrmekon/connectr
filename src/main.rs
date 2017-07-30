@@ -12,6 +12,8 @@ use rubrail::ImageTemplate;
 use rubrail::SpacerType;
 use rubrail::SwipeState;
 
+extern crate fruitbasket;
+
 extern crate ctrlc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -785,6 +787,22 @@ fn create_spotify_thread(rx_cmd: Receiver<String>) -> SpotifyThread {
 }
 
 fn main() {
+    // Relaunch in a Mac app bundle if running on OS X and not already bundled.
+    let icon = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("icon").join("connectr.icns");
+    let touchbar_icon = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("connectr_80px_300dpi.png");
+    if let Ok(nsapp) = fruitbasket::Trampoline::new(
+        "connectr", "connectr", "com.trevorbentley.connectr")
+        .icon("connectr.icns")
+        .version(env!("CARGO_PKG_VERSION"))
+        .plist_key("LSBackgroundOnly", "1")
+        .resource(icon.to_str().unwrap())
+        .resource(touchbar_icon.to_str().unwrap())
+        .build(fruitbasket::InstallDir::Custom("target/".to_string())) {
+            nsapp.set_activation_policy(fruitbasket::ActivationPolicy::Prohibited);
+        }
+
     create_logger();
     info!("Started Connectr");
 
@@ -832,11 +850,15 @@ fn main() {
         warn!("Didn't find Wine in search path.");
     }
 
+    let mut need_redraw: bool = false;
     while running.load(Ordering::SeqCst) {
         if spotify_thread.rx.recv_timeout(Duration::from_millis(100)).is_ok() {
-            // TODO: && status.can_redraw()
+            need_redraw = true;
+        }
+        if need_redraw && status.can_redraw() {
             clear_menu(&mut app, &mut status);
             fill_menu(&mut app, &spotify_thread, &mut status, &mut touchbar);
+            need_redraw = false;
         }
         status.run(false);
     }

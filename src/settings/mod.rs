@@ -2,9 +2,7 @@ extern crate ini;
 use self::ini::Ini;
 
 extern crate time;
-
-#[cfg(target_os = "macos")]
-use super::osx;
+extern crate fruitbasket;
 
 use std::env;
 use std::fs;
@@ -22,17 +20,11 @@ pub struct Settings {
     pub presets: Vec<(String,String)>,
 }
 
-#[cfg(target_os = "macos")]
 fn bundled_ini() -> String {
-    match osx::bundled_resource_path("connectr", "ini") {
+    match fruitbasket::FruitApp::bundled_resource_path("connectr", "ini") {
         Some(path) => path,
         None => String::new(),
     }
-}
-
-#[cfg(not(target_os = "macos"))]
-fn bundled_ini() -> String {
-    String::new()
 }
 
 fn inifile() -> String {
