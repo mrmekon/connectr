@@ -2,9 +2,11 @@
 
 connectr is a Rust library and systray/menubar application for controlling and monitoring [Spotify Connect](https://www.spotify.com/se/connect/) devices.
 
-As a library, connectr exposes the official [Spotify 'Player' Web API](https://developer.spotify.com/web-api/web-api-connect-endpoint-reference/) for controlling Spotify Connect devices.
+**Note:** Spotify Premium is required to create an application.  You must have Premium to use connectr.
 
 As an application, connectr provides a minimal "systray" application to observe the currently playing track, control Spotify playback, switch playback devices, and start preset playlists.  The goal is very low memory usage, so the basic Spotify functionality can always be available without keeping the massive Spotify desktop application resident in memory.
+
+As a library, connectr exposes the official [Spotify 'Player' Web API](https://developer.spotify.com/web-api/web-api-connect-endpoint-reference/) for controlling Spotify Connect devices.
 
 *Note:* connectr is not an audio playback tool; it's just a remote control.  Spotify has not publicly released a library for implementing audio playback with Spotify Connect support.  There's a reverse engineering effort, coincidentally also in Rust, at [librespot](https://github.com/plietar/librespot).
 
@@ -12,7 +14,7 @@ As an application, connectr provides a minimal "systray" application to observe 
 [![OSX/Linux Build Status](https://travis-ci.org/mrmekon/connectr.svg?branch=master)](https://travis-ci.org/mrmekon/connectr)
 [![Windows Build Status](https://ci.appveyor.com/api/projects/status/4afwy0yj2477f84h/branch/master?svg=true)](https://ci.appveyor.com/project/mrmekon/connectr/branch/master)
 
-Alpha / Hobby / Experimental
+Beta / Hobby / Experimental
 
 ### Code Status
 Sloppy; this is my first Rust.
@@ -22,7 +24,7 @@ Sloppy; this is my first Rust.
 
 ### Platform Status
 
-The underlying library should be fully cross-platform, though I'm only testing x86_64 Windows and OS X.  Let me know if you run it on an ARM; I'd like to know if that works.
+The underlying library should be fully cross-platform, though I'm only testing x86_64 Windows and OS X.
 
 *Web API Library*:
 Fully functional and pretty stable for the requirements of the connectr menu bar app.  Error handling isn't extremely robust, and it doesn't implement retries or exponential backoff, which it should.  The Spotify API can, of course, do plenty more than connectr exposes.
@@ -36,29 +38,29 @@ Fully functional and pretty stable for the requirements of the connectr menu bar
 <img src="https://github.com/mrmekon/connectr/blob/master/docs/screenshot.png" width="300">
 <img src="https://github.com/mrmekon/connectr/blob/master/docs/screenshot_windows.png" width="300">
 
-### Instructions
+### Build Instructions
 
-No binaries are provided.  You must build from source with Cargo.
-
-Create a Spotify application here: https://developer.spotify.com/my-applications
-**Note:** Spotify Premium is required to create an application.  You must have Premium to use connectr.
-You must add 'http://127.0.0.1:5432' as a Redirect URI for your application.
-Copy the Client ID and Client Secret to connectr's configuration file (see below).
-
-Something like this:
 ```
 $ git clone https://github.com/mrmekon/connectr.git
 $ cd connectr
-$ cp connectr.ini.in ~/.connectr.ini
-$ ./clientid_prompt.sh
 $ cargo run
 ```
 
-You must provide your Spotify application's client ID and secret in connectr's configuration file.  This is handled by the `clientid_prompt.sh` script, or can be done manually.
+On first launch, Connectr will open your web browser to a self-configuration page, and save its configuration to your system home directory.  The configuration page will walk you through creating the necessary Spotify developer application.
 
-**Note:** connectr uses `~/.connectr.ini` if it exists.  If it does _not_ exist, connectr will fallback to trying `connectr.ini` in the directory it is run from.  If built as an OS X application, connectr will create `~/.connectr.ini` on first launch, but will fail to run until you add your Client ID and Secret.  The included script `clientid_prompt.sh` can optionally be used to generate `~/.connectr.ini`; it will prompt for your Client ID and Secret when run.  A template is provided in `connectr.ini.in`.
+### Spotify Developer Application configuration
+
+On the first launch, connectr will guide you through setting up a Spotify developer application.  If you want to do it manually instead, or if something goes wrong, here are the instructions:
+
+* Go to your [Spotify Applications](https://developer.spotify.com/my-applications/#!/applications/create) page (login with your Spotify credentials)
+* Click "CREATE AN APP" in the upper-right corner
+* Enter a name (perhaps "Connectr") and description ("Use Connectr app with my account.")
+* Add a Redirect URI: <em>http://127.0.0.1:5432</em>
+* Copy your <em>Client ID</em> and <em>Client Secret</em> to `connectr.ini` (see below).
 
 ### Configuration file (connectr.ini) format
+
+**Note:** connectr uses `~/.connectr.ini` if it exists.  If it does _not_ exist, connectr will fallback to trying `connectr.ini` in the directory it is run from.  A template is provided in `connectr.ini.in`.
 
 connectr's configuration is read from a regular INI file with these sections:
 
@@ -70,9 +72,9 @@ connectr's configuration is read from a regular INI file with these sections:
 * secret - Spotify web application's Client Secret (string)
 
 #### [presets]
-* [name] - Key name is the display name of a playable preset, the value must be a Spotify URI to play. (string)
+* <preset name< - Key name is the display name of a playable preset, the value must be a Spotify URI to play. (string)
 
-_ex: `Bakesale=spotify:album:70XjdLKH7HHsFVWoQipP0T` will show as 'Bakesale' in the menu, and will play the specified Sebadoh album when clicked._
+_ex: `Bakesale = spotify:album:70XjdLKH7HHsFVWoQipP0T` will show as 'Bakesale' in the menu, and will play the specified Sebadoh album when clicked._
 
 #### [tokens]
 * access - Spotify Web API access token

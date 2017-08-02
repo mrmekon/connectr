@@ -3,6 +3,10 @@ use std::error::Error;
 use std::str;
 use std::io::{Read, Write, BufReader, BufRead};
 use std::net::{TcpListener};
+use std::thread;
+use std::sync::mpsc::channel;
+use std::time::Duration;
+use std::collections::BTreeMap;
 
 extern crate regex;
 use self::regex::Regex;
@@ -10,6 +14,7 @@ use self::regex::Regex;
 extern crate curl;
 use self::curl::easy::{Easy, List};
 
+extern crate time;
 extern crate open;
 extern crate url;
 use self::url::percent_encoding;
@@ -167,20 +172,131 @@ fn oauth_request_with_local_webserver(port: u32, url: &str, reply: &str) -> Vec<
     if !open::that(url).is_ok() {
         return Vec::<String>::new()
     }
+    let start = time::now_utc().to_timespec().sec as i64;
     let host = format!("127.0.0.1:{}", port);
-    let listener = TcpListener::bind(host).unwrap();
-    let stream = listener.accept().unwrap().0;
-    let mut reader = BufReader::new(stream);
-    let mut response = Vec::<String>::new();
-    for line in reader.by_ref().lines() {
-        let line_str = line.unwrap();
-        response.push(line_str.clone());
-        if line_str == "" {
-            break;
+    let listener = TcpListener::bind(host);
+    if listener.is_err() {
+        return Vec::<String>::new();
+    }
+    let timeout_sec = 20;
+    let listener = listener.unwrap();
+    let _ = listener.set_nonblocking(true);
+    loop {
+        let conn = listener.accept();
+        if conn.is_err() {
+            let now = time::now_utc().to_timespec().sec as i64;
+            if now >= start + timeout_sec {
+                warn!("Spotify OAuth request timed out.");
+                break;
+            }
+            thread::sleep(Duration::from_millis(100));
+            continue;
+        }
+        let stream = conn.unwrap().0;
+        let mut reader = BufReader::new(stream);
+        let mut response = Vec::<String>::new();
+        for line in reader.by_ref().lines() {
+            let line_str = line.unwrap();
+            response.push(line_str.clone());
+            if line_str == "" {
+                break;
+            }
+        }
+        let _ = reader.into_inner().write(reply.as_bytes());
+        return response;
+    }
+    Vec::<String>::new()
+}
+
+pub fn config_request_local_webserver(port: u32, form: String, reply: String) -> BTreeMap<String,String> {
+    let mut config = BTreeMap::<String,String>::new();
+    let (tx,rx) = channel::<Option<(String,String)>>();
+    let (tx_kill,rx_kill) = channel::<()>();
+    thread::spawn(move || {
+        // Implement a custom HTTP server, because YOU'RE NOT MY MOM.
+        let host = format!("127.0.0.1:{}", port);
+        let listener = TcpListener::bind(host);
+        if listener.is_err() {
+            let _ = tx.send(None); // Start data transfer
+            let _ = tx.send(None); // End data transfer
+            return;
+        }
+        let listener = listener.unwrap();
+        let _ = listener.set_nonblocking(true);
+        loop {
+            let conn = listener.accept();
+            if conn.is_err() {
+                match rx_kill.try_recv() {
+                    Ok(_) => { break;},
+                    Err(_) => {
+                        thread::sleep(Duration::from_millis(100));
+                        continue;
+                    },
+                }
+            }
+            let stream = conn.unwrap().0;
+            let mut reader = BufReader::new(stream);
+            let mut response = Vec::<String>::new();
+            let mut post_bytes: u32 = 0;
+            let re = Regex::new(r"Content-Length: ([0-9 ]+)").unwrap();
+            for line in reader.by_ref().lines() {
+                let line_str = line.unwrap();
+                if re.is_match(line_str.as_str()) {
+                    post_bytes = re.captures(line_str.as_str()).unwrap()[1].parse::<u32>().unwrap();
+                }
+                response.push(line_str.clone());
+                if line_str == "" {
+                    break;
+                }
+            }
+            match post_bytes {
+                x if x > 0  => {
+                    // Tell parent thread data is coming.  Cancels timeout mechanism.
+                    let _ = tx.send(None);
+                    {
+                        let mut post_reader = reader.by_ref().take(post_bytes as u64);
+                        let mut post_data = Vec::<u8>::new();
+                        let _ = post_reader.read_to_end(&mut post_data);
+                        let post_data = String::from_utf8(post_data).unwrap();
+                        for post_pair in post_data.split("&") {
+                        let mut key_value = post_pair.split("=");
+                            let key = key_value.next().unwrap();
+                            let value = key_value.next().unwrap();
+                            let _ = tx.send(Some((key.to_string(),value.to_string())));
+                        }
+                    }
+                    let _ = reader.into_inner().write(reply.as_bytes());
+                    // Tell parent thread that data is finished.
+                    let _ = tx.send(None);
+                    break;
+                },
+                _ => {
+                    let _ = reader.into_inner().write(form.as_bytes());
+                }
+            }
+        }
+    });
+    if !open::that(format!("http://127.0.0.1:{}", port)).is_ok() {
+        return config;
+    }
+    // Run web server for an hour.
+    let timeout = Duration::from_secs(60*60);
+    match rx.recv_timeout(timeout) {
+        Ok(_) => {
+            while let Some(pair) = rx.recv().unwrap() {
+                let key = pair.0.replace("+"," ").trim().to_string();
+                let key = percent_encoding::percent_decode(key.as_bytes()).decode_utf8_lossy();
+                let value = pair.1.replace("+"," ").trim().to_string();
+                let value = percent_encoding::percent_decode(value.trim().as_bytes()).decode_utf8_lossy();
+                config.insert(key.to_string(), value.to_string());
+            }
+        }
+        _ => {
+            warn!("Web configuration timed out.");
+            let _ = tx_kill.send(());
         }
     }
-    let _ = reader.into_inner().write(reply.as_bytes());
-    response
+    config
 }
 
 fn spotify_auth_code(lines: Vec<String>) -> String {

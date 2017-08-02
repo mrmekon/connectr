@@ -23,7 +23,6 @@ use std::sync::RwLock;
 extern crate log;
 extern crate log4rs;
 
-use std::env;
 use std::ptr;
 use std::thread;
 use std::time::Duration;
@@ -33,6 +32,7 @@ use std::rc::Rc;
 use std::cell::RefCell;
 
 extern crate time;
+extern crate open;
 
 #[macro_use]
 extern crate serde_derive;
@@ -43,6 +43,11 @@ use std::process;
 // How often to refresh Spotify state (if nothing triggers a refresh earlier).
 pub const REFRESH_PERIOD: i64 = 30;
 
+enum SpotifyThreadCommand {
+    Update,
+    InvalidSettings,
+}
+
 #[allow(dead_code)]
 #[derive(PartialEq, Debug)]
 enum RefreshTime {
@@ -52,7 +57,7 @@ enum RefreshTime {
     Redraw, // instantly, with stale data
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, Copy)]
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq)]
 enum CallbackAction {
     SelectDevice,
     PlayPause,
@@ -61,6 +66,7 @@ enum CallbackAction {
     Volume,
     Preset,
     Redraw,
+    Reconfigure,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -391,6 +397,32 @@ fn play_action_label(is_playing: bool) -> &'static str {
     }
 }
 
+fn loading_menu<T: TStatusBar>(status: &mut T) {
+    status.add_label("Syncing with Spotify...");
+    status.add_separator();
+    status.add_quit("Exit");
+}
+fn reconfig_menu<T: TStatusBar>(status: &mut T) {
+    status.add_label("Invalid Configuration!");
+    status.add_separator();
+    let cb: NSCallback = Box::new(move |sender, tx| {
+        let cmd = MenuCallbackCommand {
+            action: CallbackAction::Reconfigure,
+            sender: sender,
+            data: String::new(),
+        };
+        let _ = tx.send(serde_json::to_string(&cmd).unwrap());
+    });
+    let _ = status.add_item("Reconfigure Connectr", cb, false);
+    status.add_separator();
+    let cb: NSCallback = Box::new(move |_sender, _tx| {
+        let _ = open::that("https://github.com/mrmekon/connectr");
+    });
+    let _ = status.add_item("Help!", cb, false);
+    status.add_separator();
+    status.add_quit("Exit");
+}
+
 fn fill_menu<T: TStatusBar>(app: &mut ConnectrApp,
                             spotify: &SpotifyThread,
                             status: &mut T,
@@ -585,34 +617,6 @@ fn clear_menu<T: TStatusBar>(app: &mut ConnectrApp, status: &mut T) {
     status.clear_items();
 }
 
-fn create_logger() {
-    use log::LogLevelFilter;
-    use log4rs::append::console::ConsoleAppender;
-    use log4rs::append::file::FileAppender;
-    use log4rs::encode::pattern::PatternEncoder;
-    use log4rs::config::{Appender, Config, Logger, Root};
-
-    let log_path = format!("{}/{}", env::home_dir().unwrap().display(), ".connectr.log");
-    let stdout = ConsoleAppender::builder()
-        .encoder(Box::new(PatternEncoder::new("{m}{n}")))
-        .build();
-    let requests = FileAppender::builder()
-        .build(&log_path)
-        .unwrap();
-
-    let config = Config::builder()
-        .appender(Appender::builder().build("stdout", Box::new(stdout)))
-        .appender(Appender::builder().build("requests", Box::new(requests)))
-        .logger(Logger::builder().build("app::backend::db", LogLevelFilter::Info))
-        .logger(Logger::builder()
-            .appender("requests")
-            .additive(false)
-            .build("app::requests", LogLevelFilter::Info))
-        .build(Root::builder().appender("stdout").appender("requests").build(LogLevelFilter::Info))
-        .unwrap();
-    let _ = log4rs::init_config(config).unwrap();
-}
-
 fn handle_callback(player_state: Option<&connectr::PlayerState>,
                    spotify: &mut connectr::SpotifyConnectr,
                    cmd: &MenuCallbackCommand) -> RefreshTime {
@@ -646,6 +650,7 @@ fn handle_callback(player_state: Option<&connectr::PlayerState>,
         CallbackAction::Redraw => {
             refresh = RefreshTime::Redraw;
         }
+        CallbackAction::Reconfigure => {}
     }
     refresh
 }
@@ -700,7 +705,7 @@ struct SpotifyThread {
     handle: std::thread::JoinHandle<()>,
     #[allow(dead_code)]
     tx: Sender<String>,
-    rx: Receiver<String>,
+    rx: Receiver<SpotifyThreadCommand>,
     device_list: Arc<RwLock<Option<connectr::ConnectDeviceList>>>,
     player_state: Arc<RwLock<Option<connectr::PlayerState>>>,
     presets: Arc<RwLock<Vec<(String,String)>>>,
@@ -708,7 +713,7 @@ struct SpotifyThread {
 
 fn create_spotify_thread(rx_cmd: Receiver<String>) -> SpotifyThread {
     let (tx_in,rx_in) = channel::<String>();
-    let (tx_out,rx_out) = channel::<String>();
+    let (tx_out,rx_out) = channel::<SpotifyThreadCommand>();
     let device_list = Arc::new(RwLock::new(None));
     let player_state = Arc::new(RwLock::new(None));
     let presets = Arc::new(RwLock::new(vec![]));
@@ -720,7 +725,28 @@ fn create_spotify_thread(rx_cmd: Receiver<String>) -> SpotifyThread {
         let rx = rx_in;
         let rx_cmd = rx_cmd;
         let mut refresh_time_utc = 0;
-        let mut spotify = connectr::SpotifyConnectr::new();
+
+        // Continuously try to create a connection to Spotify web API.
+        // If it fails, assume that the settings file is corrupt and inform
+        // the main thread of it.  The main thread can request that the
+        // settings file be re-configured.
+        let mut spotify: Option<connectr::SpotifyConnectr>;
+        loop {
+            spotify = connectr::SpotifyConnectr::new();
+            match spotify {
+                Some(_) => { break; },
+                None => {
+                    let _ = tx.send(SpotifyThreadCommand::InvalidSettings);
+                    if let Ok(s) = rx_cmd.recv_timeout(Duration::from_secs(120)) {
+                        let cmd: MenuCallbackCommand = serde_json::from_str(&s).unwrap();
+                        if cmd.action == CallbackAction::Reconfigure {
+                            connectr::reconfigure();
+                        }
+                    }
+                },
+            }
+        }
+        let mut spotify = spotify.unwrap();
         let device_list = thread_device_list;
         let player_state = thread_player_state;
         let presets = thread_presets;
@@ -731,7 +757,7 @@ fn create_spotify_thread(rx_cmd: Receiver<String>) -> SpotifyThread {
         {
             let mut preset_writer = presets.write().unwrap();
             *preset_writer = spotify.get_presets().clone();
-            let _ = tx.send(String::new());
+            let _ = tx.send(SpotifyThreadCommand::Update);
         }
         loop {
             if rx.try_recv().is_ok() {
@@ -754,7 +780,7 @@ fn create_spotify_thread(rx_cmd: Receiver<String>) -> SpotifyThread {
                     _ => refresh_time_utc,
                 };
                 if refresh_strategy == RefreshTime::Redraw {
-                    let _ = tx.send(String::new());
+                    let _ = tx.send(SpotifyThreadCommand::Update);
                 }
             }
 
@@ -772,7 +798,7 @@ fn create_spotify_thread(rx_cmd: Receiver<String>) -> SpotifyThread {
                 }
                 refresh_time_utc = refresh_time(player_state.read().unwrap().as_ref(), now);
                 info!("Refreshed Spotify state.");
-                let _ = tx.send(String::new()); // inform main thread
+                let _ = tx.send(SpotifyThreadCommand::Update);
             }
         }
     });
@@ -787,23 +813,37 @@ fn create_spotify_thread(rx_cmd: Receiver<String>) -> SpotifyThread {
 }
 
 fn main() {
+    fruitbasket::create_logger(".connectr.log", fruitbasket::LogDir::Home, 5, 2).unwrap();
+
     // Relaunch in a Mac app bundle if running on OS X and not already bundled.
     let icon = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("icon").join("connectr.icns");
     let touchbar_icon = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("connectr_80px_300dpi.png");
+    let clientid_script = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("clientid_prompt.sh");
+    let license = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("LICENSE");
+    let ini = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("connectr.ini.in");
     if let Ok(nsapp) = fruitbasket::Trampoline::new(
-        "connectr", "connectr", "com.trevorbentley.connectr")
+        "Connectr", "connectr", "com.trevorbentley.connectr")
         .icon("connectr.icns")
         .version(env!("CARGO_PKG_VERSION"))
         .plist_key("LSBackgroundOnly", "1")
         .resource(icon.to_str().unwrap())
         .resource(touchbar_icon.to_str().unwrap())
+        .resource(clientid_script.to_str().unwrap())
+        .resource(license.to_str().unwrap())
+        .resource(ini.to_str().unwrap())
         .build(fruitbasket::InstallDir::Custom("target/".to_string())) {
             nsapp.set_activation_policy(fruitbasket::ActivationPolicy::Prohibited);
         }
+    else {
+        error!("Failed to create OS X bundle!");
+        std::process::exit(1);
+    }
 
-    create_logger();
     info!("Started Connectr");
 
     let running = Arc::new(AtomicBool::new(true));
@@ -830,6 +870,7 @@ fn main() {
 
     let mut status = connectr::StatusBar::new(tx.clone());
     info!("Created status bar.");
+    loading_menu(&mut status);
     let mut touchbar = TouchbarUI::init(tx);
     info!("Created touchbar.");
 
@@ -852,8 +893,17 @@ fn main() {
 
     let mut need_redraw: bool = false;
     while running.load(Ordering::SeqCst) {
-        if spotify_thread.rx.recv_timeout(Duration::from_millis(100)).is_ok() {
-            need_redraw = true;
+        match spotify_thread.rx.recv_timeout(Duration::from_millis(100)) {
+            Ok(cmd) => {
+                match cmd {
+                    SpotifyThreadCommand::Update => { need_redraw = true; },
+                    SpotifyThreadCommand::InvalidSettings => {
+                        clear_menu(&mut app, &mut status);
+                        reconfig_menu(&mut status);
+                    }
+                }
+            },
+            Err(_) => {}
         }
         if need_redraw && status.can_redraw() {
             clear_menu(&mut app, &mut status);
