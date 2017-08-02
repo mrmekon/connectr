@@ -72,7 +72,7 @@ connectr's configuration is read from a regular INI file with these sections:
 * secret - Spotify web application's Client Secret (string)
 
 #### [presets]
-* <preset name< - Key name is the display name of a playable preset, the value must be a Spotify URI to play. (string)
+* <preset name> - Key name is the display name of a playable preset, the value must be a Spotify URI to play. (string)
 
 _ex: `Bakesale = spotify:album:70XjdLKH7HHsFVWoQipP0T` will show as 'Bakesale' in the menu, and will play the specified Sebadoh album when clicked._
 
