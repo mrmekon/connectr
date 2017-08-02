@@ -7,7 +7,6 @@ extern crate chrono;
 
 use std::fmt;
 use std::iter;
-use std::process;
 use std::cell::Cell;
 use std::collections::BTreeMap;
 use std::sync::mpsc::{channel, Receiver};
@@ -25,14 +24,17 @@ pub type DeviceId = String;
 pub type SpotifyResponse = HttpResponse;
 
 pub fn parse_spotify_token(json: &str) -> (String, String, u64) {
-    let json_data: Value = serde_json::from_str(json).unwrap();
-    let access_token = json_data["access_token"].as_str().unwrap();
-    let refresh_token = match json_data.get("refresh_token") {
-        Some(j) => j.as_str().unwrap(),
-        None => "",
-    };
-    let expires_in = json_data["expires_in"].as_u64().unwrap();
-    (String::from(access_token),String::from(refresh_token), expires_in)
+    if let Ok(json_data) = serde_json::from_str(json) {
+        let json_data: Value = json_data;
+        let access_token = json_data["access_token"].as_str().unwrap_or("");
+        let refresh_token = match json_data.get("refresh_token") {
+            Some(j) => j.as_str().unwrap(),
+            None => "",
+        };
+        let expires_in = json_data["expires_in"].as_u64().unwrap_or(0 as u64);
+        return (String::from(access_token),String::from(refresh_token), expires_in);
+    }
+    (String::new(), String::new(), 0)
 }
 
 #[derive(Deserialize, Debug)]
@@ -294,26 +296,42 @@ pub struct SpotifyConnectr<'a> {
     refresh_timer_guard: Option<timer::Guard>,
     refresh_timer_channel: Option<Receiver<()>>,
 }
+impl<'a> Default for SpotifyConnectr<'a> {
+    fn default() -> Self {
+        SpotifyConnectr {
+            api: Cell::new(SPOTIFY_API),
+            settings: Default::default(),
+            auth_code: Default::default(),
+            access_token: Default::default(),
+            refresh_token: Default::default(),
+            expire_utc: Default::default(),
+            device: Default::default(),
+            refresh_timer: timer::Timer::new(),
+            refresh_timer_guard: Default::default(),
+            refresh_timer_channel: Default::default(),
+        }
+    }
+}
 
 impl<'a> SpotifyConnectr<'a> {
-    pub fn new() -> SpotifyConnectr<'a> {
+    pub fn new() -> Option<SpotifyConnectr<'a>> {
         let settings = match settings::read_settings() {
             Some(s) => s,
-            None => process::exit(0),
+            None => { return None },
         };
         let expire = settings.expire_utc;
         let access = settings.access_token.clone();
         let refresh = settings.refresh_token.clone();
-        SpotifyConnectr {api:Cell::new(SPOTIFY_API),
-                         settings: settings,
-                         auth_code: String::new(),
-                         access_token: access,
-                         refresh_token: refresh,
-                         expire_utc: expire,
-                         device: None,
-                         refresh_timer: timer::Timer::new(),
-                         refresh_timer_guard: None,
-                         refresh_timer_channel: None}
+        Some(SpotifyConnectr {api:Cell::new(SPOTIFY_API),
+                              settings: settings,
+                              auth_code: String::new(),
+                              access_token: access,
+                              refresh_token: refresh,
+                              expire_utc: expire,
+                              device: None,
+                              refresh_timer: timer::Timer::new(),
+                              refresh_timer_guard: None,
+                              refresh_timer_channel: None})
     }
     #[cfg(test)]
     fn with_api(self, api: SpotifyEndpoints<'a>) -> SpotifyConnectr<'a> {

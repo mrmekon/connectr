@@ -111,6 +111,11 @@ impl TStatusBar for DummyStatusBar {
     fn run(&mut self, _: bool) {}
 }
 
+pub fn reconfigure() {
+    let web_config = settings::request_web_config();
+    let _ = settings::save_web_config(web_config);
+}
+
 pub fn search_paths() -> Vec<String> {
     use std::collections::BTreeSet;
     //let mut v = Vec::<String>::new();

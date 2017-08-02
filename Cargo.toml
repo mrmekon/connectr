@@ -9,7 +9,6 @@ homepage = "https://github.com/mrmekon/connectr"
 repository = "https://github.com/mrmekon/connectr"
 documentation = "https://mrmekon.github.io/connectr/connectr/"
 license = "Apache-2.0"
-build = "build.rs"
 
 [lib]
 name = "connectr"
@@ -47,7 +46,10 @@ chrono = "0.3.0"
 log = "0.3.7"
 log4rs = "0.6.3"
 ctrlc = "3.0.1"
-fruitbasket = "0.4"
+
+[dependencies.fruitbasket]
+version = "0.4"
+features = ["logging"]
 
 [target."cfg(windows)".dependencies]
 #systray = "0.1.1"
