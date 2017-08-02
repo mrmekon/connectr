@@ -124,7 +124,7 @@ mod tests {
 
     #[test]
     fn test_refresh_oauth_tokens_no_connection() {
-        let spotify = SpotifyConnectr::new().with_api(TEST_API);
+        let spotify = SpotifyConnectr::new().unwrap().with_api(TEST_API);
         let res = spotify.refresh_oauth_tokens();
         // Unlock webserver init so all other tests can run
         WEBSERVER_STARTED.store(true, Ordering::Relaxed);
@@ -134,7 +134,7 @@ mod tests {
     #[test]
     fn test_refresh_oauth_tokens_pass() {
         init();
-        let spotify = SpotifyConnectr::new().with_api(TEST_API);
+        let spotify = SpotifyConnectr::new().unwrap().with_api(TEST_API);
         match spotify.refresh_oauth_tokens() {
             Some((access,expires)) => {
                 assert_eq!(access, "valid_access_code");
@@ -147,7 +147,7 @@ mod tests {
     #[test]
     fn test_refresh_oauth_tokens_error_status() {
         init();
-        let mut spotify = SpotifyConnectr::new().with_api(TEST_API);
+        let mut spotify = SpotifyConnectr::new().unwrap().with_api(TEST_API);
         spotify.refresh_token = Some("error".to_string());
         match spotify.refresh_oauth_tokens() {
             Some(_) => { assert!(false) },
