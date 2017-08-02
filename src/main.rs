@@ -13,6 +13,8 @@ use rubrail::SpacerType;
 use rubrail::SwipeState;
 
 extern crate fruitbasket;
+use fruitbasket::FruitApp;
+use fruitbasket::FruitError;
 
 extern crate ctrlc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -826,7 +828,7 @@ fn main() {
         .join("LICENSE");
     let ini = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("connectr.ini.in");
-    if let Ok(nsapp) = fruitbasket::Trampoline::new(
+    let nsapp = match fruitbasket::Trampoline::new(
         "Connectr", "connectr", "com.trevorbentley.connectr")
         .icon("connectr.icns")
         .version(env!("CARGO_PKG_VERSION"))
@@ -837,13 +839,14 @@ fn main() {
         .resource(license.to_str().unwrap())
         .resource(ini.to_str().unwrap())
         .build(fruitbasket::InstallDir::Custom("target/".to_string())) {
-            nsapp.set_activation_policy(fruitbasket::ActivationPolicy::Prohibited);
-        }
-    else {
-        error!("Failed to create OS X bundle!");
-        std::process::exit(1);
-    }
-
+            Ok(app) => { app },
+            Err(FruitError::UnsupportedPlatform(_)) => { FruitApp::new() },
+            _ => {
+                error!("Couldn't create Mac app bundle.");
+                std::process::exit(1);
+            },
+        };
+    nsapp.set_activation_policy(fruitbasket::ActivationPolicy::Prohibited);
     info!("Started Connectr");
 
     let running = Arc::new(AtomicBool::new(true));

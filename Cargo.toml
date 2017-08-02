@@ -48,7 +48,7 @@ log4rs = "0.6.3"
 ctrlc = "3.0.1"
 
 [dependencies.fruitbasket]
-version = "0.4"
+version = "0.5"
 features = ["logging"]
 
 [target."cfg(windows)".dependencies]
