@@ -83,7 +83,8 @@ If something goes wrong or changes, edit or delete that file.</small>
                        "HTTP/1.1 200 OK\r\n\r\n",
                        PORT,
                        default_inifile());
-    let reply = format!("Configuration saved.  You can close this window.");
+    let reply = format!("{}Configuration saved.  You can close this window.",
+                        "HTTP/1.1 200 OK\r\n\r\n");
     let mut config = BTreeMap::<String,String>::new();
     config.insert("port".to_string(), PORT.to_string());
     config.append(&mut http::config_request_local_webserver(WEB_PORT, form, reply));
