@@ -121,6 +121,9 @@ mod tests {
                 server.run().unwrap();
                 WEBSERVER_STARTED.store(true, Ordering::Relaxed);
             });
+            // Give it some time to really come up.  It would be nicer to
+            // actually try to connect to it.
+            sleep(Duration::from_millis(500));
         });
     }
 
