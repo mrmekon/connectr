@@ -630,7 +630,7 @@ fn handle_callback(player_state: Option<&connectr::PlayerState>,
                    spotify: &mut connectr::SpotifyConnectr,
                    cmd: &MenuCallbackCommand) -> RefreshTime {
     info!("Executed action: {:?}", cmd.action);
-    let mut refresh = RefreshTime::Soon;
+    let mut refresh = RefreshTime::Now;
     match cmd.action {
         CallbackAction::SelectDevice => {
             require(spotify.transfer(cmd.data.clone(), true));
@@ -784,7 +784,15 @@ fn create_spotify_thread(rx_cmd: Receiver<String>) -> SpotifyThread {
                 let refresh_strategy =  handle_callback(player_state.read().unwrap().as_ref(),
                                                         &mut spotify, &cmd);
                 refresh_time_utc = match refresh_strategy {
-                    RefreshTime::Now => now - 1,
+                    RefreshTime::Now => {
+                        // Let the other thread run, and hope that the command
+                        // gets through.  The Spotify backend is really slow to
+                        // show changes sometimes, even after they happen.
+                        // TODO: change the UI before the real backend changes
+                        // go through.
+                        thread::sleep(Duration::from_millis(100));
+                        now - 1
+                    },
                     RefreshTime::Soon => now + 1,
                     _ => refresh_time_utc,
                 };
