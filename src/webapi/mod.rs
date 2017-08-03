@@ -7,7 +7,6 @@ extern crate chrono;
 
 use std::fmt;
 use std::iter;
-use std::cell::Cell;
 use std::collections::BTreeMap;
 use std::sync::mpsc::{channel, Receiver};
 
@@ -284,7 +283,7 @@ struct DeviceIdList {
 }
 
 pub struct SpotifyConnectr<'a> {
-    api: Cell<SpotifyEndpoints<'a>>,
+    api: SpotifyEndpoints<'a>,
     settings: settings::Settings,
     auth_code: String,
     access_token: Option<String>,
@@ -299,7 +298,7 @@ pub struct SpotifyConnectr<'a> {
 impl<'a> Default for SpotifyConnectr<'a> {
     fn default() -> Self {
         SpotifyConnectr {
-            api: Cell::new(SPOTIFY_API),
+            api: SPOTIFY_API,
             settings: Default::default(),
             auth_code: Default::default(),
             access_token: Default::default(),
@@ -313,36 +312,59 @@ impl<'a> Default for SpotifyConnectr<'a> {
     }
 }
 
-impl<'a> SpotifyConnectr<'a> {
-    pub fn new() -> Option<SpotifyConnectr<'a>> {
-        let settings = match settings::read_settings() {
-            Some(s) => s,
-            None => { return None },
-        };
-        let expire = settings.expire_utc;
-        let access = settings.access_token.clone();
-        let refresh = settings.refresh_token.clone();
-        Some(SpotifyConnectr {api:Cell::new(SPOTIFY_API),
+pub struct SpotifyConnectrBuilder<'a> {
+    api: SpotifyEndpoints<'a>,
+    access: Option<String>,
+    refresh: Option<String>,
+    expire: Option<u64>,
+}
+impl<'a> SpotifyConnectrBuilder<'a> {
+    pub fn build(&mut self) -> Option<SpotifyConnectr<'a>> {
+        let mut settings: settings::Settings = Default::default();
+        if self.expire.is_none() {
+            settings = match settings::read_settings() {
+                Some(s) => s,
+                None => { return None },
+            };
+            self.expire = settings.expire_utc;
+            self.access = settings.access_token.clone();
+            self.refresh = settings.refresh_token.clone();
+        }
+        Some(SpotifyConnectr {api: self.api,
                               settings: settings,
                               auth_code: String::new(),
-                              access_token: access,
-                              refresh_token: refresh,
-                              expire_utc: expire,
+                              access_token: self.access.clone(),
+                              refresh_token: self.refresh.clone(),
+                              expire_utc: self.expire,
                               device: None,
                               refresh_timer: timer::Timer::new(),
                               refresh_timer_guard: None,
                               refresh_timer_channel: None})
     }
     #[cfg(test)]
-    fn with_api(self, api: SpotifyEndpoints<'a>) -> SpotifyConnectr<'a> {
-        self.api.set(api);
+    fn with_api(&mut self, api: SpotifyEndpoints<'a>) -> &mut Self {
+        self.api = api;
         self
     }
-    //fn is_token_expired(&self) -> bool {
-    //    let now = time::now_utc().to_timespec().sec as u64;
-    //    let expire_utc = self.expire_utc.unwrap_or(0);
-    //    expire_utc <= (now - 60)
-    //}
+    #[cfg(test)]
+    fn with_oauth_tokens(&mut self, access: &str, refresh: &str, expire: u64) -> &mut Self {
+        self.access = Some(access.to_string());
+        self.refresh = Some(refresh.to_string());
+        self.expire = Some(expire);
+        self
+    }
+}
+
+
+impl<'a> SpotifyConnectr<'a> {
+    pub fn new() -> SpotifyConnectrBuilder<'a> {
+        SpotifyConnectrBuilder {
+            api: SPOTIFY_API,
+            access: None,
+            refresh: None,
+            expire: None,
+        }
+    }
     fn expire_offset_to_utc(&self, expires_in: u64) -> u64 {
         let now = time::now_utc().to_timespec().sec as u64;
         now + expires_in
@@ -415,7 +437,7 @@ impl<'a> SpotifyConnectr<'a> {
     }
     pub fn authenticate(&mut self) {
         info!("Requesting fresh credentials.");
-        self.auth_code = http::authenticate(self.api.get().scopes, self.api.get().authorize, &self.settings);
+        self.auth_code = http::authenticate(self.api.scopes, self.api.authorize, &self.settings);
         let (access_token, refresh_token, expires_in) = self.request_oauth_tokens(&self.auth_code, &self.settings);
         let expire_utc = self.expire_offset_to_utc(expires_in);
         let _ = settings::save_tokens(&access_token, &refresh_token, expire_utc);
@@ -432,7 +454,7 @@ impl<'a> SpotifyConnectr<'a> {
         .add("client_id", settings.client_id.clone())
         .add("client_secret", settings.secret.clone())
         .build();
-        let json_response = http::http(self.api.get().token, &query, "", http::HttpMethod::POST,
+        let json_response = http::http(self.api.token, &query, "", http::HttpMethod::POST,
                                        http::AccessToken::None).unwrap();
         parse_spotify_token(&json_response)
     }
@@ -463,7 +485,7 @@ impl<'a> SpotifyConnectr<'a> {
             .add("client_id", self.settings.client_id.clone())
             .add("client_secret", self.settings.secret.clone())
             .build();
-        let json_response = http::http(self.api.get().token, &query, "",
+        let json_response = http::http(self.api.token, &query, "",
                                        http::HttpMethod::POST, http::AccessToken::None);
         match json_response.code {
             Some(200) => {
@@ -474,7 +496,7 @@ impl<'a> SpotifyConnectr<'a> {
         }
     }
     pub fn request_device_list(&mut self) -> Option<ConnectDeviceList> {
-        let json_response = http::http(self.api.get().devices, "", "",
+        let json_response = http::http(self.api.devices, "", "",
                                        http::HttpMethod::GET, self.bearer_token());
         match json_response.code {
             Some(200) => serde_json::from_str(&json_response.data.unwrap()).unwrap(),
@@ -487,7 +509,7 @@ impl<'a> SpotifyConnectr<'a> {
         }
     }
     pub fn request_player_state(&mut self) -> Option<PlayerState> {
-        let json_response = http::http(self.api.get().player_state, "", "",
+        let json_response = http::http(self.api.player_state, "", "",
                                        http::HttpMethod::GET, self.bearer_token());
         match json_response.code {
             Some(200) => match serde_json::from_str(&json_response.data.unwrap()) {
@@ -511,58 +533,58 @@ impl<'a> SpotifyConnectr<'a> {
             Some(x) => serde_json::to_string(x).unwrap(),
             None => String::new(),
         };
-        http::http(self.api.get().play, &query, &body, http::HttpMethod::PUT, self.bearer_token())
+        http::http(self.api.play, &query, &body, http::HttpMethod::PUT, self.bearer_token())
     }
     pub fn pause(&self) -> SpotifyResponse {
         let query = QueryString::new().add_opt("device_id", self.device.clone()).build();
-        http::http(self.api.get().pause, &query, "", http::HttpMethod::PUT, self.bearer_token())
+        http::http(self.api.pause, &query, "", http::HttpMethod::PUT, self.bearer_token())
     }
     pub fn next(&self) -> SpotifyResponse {
         let query = QueryString::new().add_opt("device_id", self.device.clone()).build();
-        http::http(self.api.get().next, &query, "", http::HttpMethod::POST, self.bearer_token())
+        http::http(self.api.next, &query, "", http::HttpMethod::POST, self.bearer_token())
     }
     pub fn previous(&self) -> SpotifyResponse {
         let query = QueryString::new().add_opt("device_id", self.device.clone()).build();
-        http::http(self.api.get().previous, &query, "", http::HttpMethod::POST, self.bearer_token())
+        http::http(self.api.previous, &query, "", http::HttpMethod::POST, self.bearer_token())
     }
     pub fn seek(&self, position: u32) -> SpotifyResponse {
         let query = QueryString::new()
             .add_opt("device_id", self.device.clone())
             .add("position_ms", position)
             .build();
-        http::http(self.api.get().seek, &query, "", http::HttpMethod::PUT, self.bearer_token())
+        http::http(self.api.seek, &query, "", http::HttpMethod::PUT, self.bearer_token())
     }
     pub fn volume(&self, volume: u32) -> SpotifyResponse {
         let query = QueryString::new()
             .add_opt("device_id", self.device.clone())
             .add("volume_percent", volume)
             .build();
-        http::http(self.api.get().volume, &query, "", http::HttpMethod::PUT, self.bearer_token())
+        http::http(self.api.volume, &query, "", http::HttpMethod::PUT, self.bearer_token())
     }
     pub fn shuffle(&self, shuffle: bool) -> SpotifyResponse {
         let query = QueryString::new()
             .add_opt("device_id", self.device.clone())
             .add("state", shuffle)
             .build();
-        http::http(self.api.get().shuffle, &query, "", http::HttpMethod::PUT, self.bearer_token())
+        http::http(self.api.shuffle, &query, "", http::HttpMethod::PUT, self.bearer_token())
     }
     pub fn repeat(&self, repeat: SpotifyRepeat) -> SpotifyResponse {
         let query = QueryString::new()
             .add_opt("device_id", self.device.clone())
             .add("state", repeat)
             .build();
-        http::http(self.api.get().repeat, &query, "", http::HttpMethod::PUT, self.bearer_token())
+        http::http(self.api.repeat, &query, "", http::HttpMethod::PUT, self.bearer_token())
     }
     pub fn transfer_multi(&mut self, devices: Vec<String>, play: bool) -> SpotifyResponse {
         let device = devices[0].clone();
         let body = serde_json::to_string(&DeviceIdList {device_ids: devices, play: play}).unwrap();
         self.set_target_device(Some(device));
-        http::http(self.api.get().player, "", &body, http::HttpMethod::PUT, self.bearer_token())
+        http::http(self.api.player, "", &body, http::HttpMethod::PUT, self.bearer_token())
     }
     pub fn transfer(&mut self, device: String, play: bool) -> SpotifyResponse {
         let body = serde_json::to_string(&DeviceIdList {device_ids: vec![device.clone()], play: play}).unwrap();
         self.set_target_device(Some(device));
-        http::http(self.api.get().player, "", &body, http::HttpMethod::PUT, self.bearer_token())
+        http::http(self.api.player, "", &body, http::HttpMethod::PUT, self.bearer_token())
     }
     pub fn get_presets(&mut self) -> &Vec<(String,String)> {
         &self.settings.presets
