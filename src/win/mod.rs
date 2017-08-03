@@ -5,6 +5,7 @@ pub use ::NSCallback;
 
 use self::systray::api::api::MenuEnableFlag;
 
+use std::process;
 use std::collections::BTreeMap;
 use std::sync::mpsc::Sender;
 
@@ -59,9 +60,11 @@ impl TStatusBar for WindowsStatusBar {
     }
     fn add_quit(&mut self, label: &str) {
         let ref mut win = &mut self.app.window;
-        // TODO: shutdown without a panic
         let _ = win.add_menu_item(&label.to_string(), false,
-                                  |window| { window.quit(); panic!(""); });
+                                  |window| {
+                                      window.quit();
+                                      process::exit(0);
+                                  });
     }
     fn add_separator(&mut self) {
         let ref mut win = &mut self.app.window;
