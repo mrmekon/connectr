@@ -734,7 +734,7 @@ fn create_spotify_thread(rx_cmd: Receiver<String>) -> SpotifyThread {
         // settings file be re-configured.
         let mut spotify: Option<connectr::SpotifyConnectr>;
         loop {
-            spotify = connectr::SpotifyConnectr::new();
+            spotify = connectr::SpotifyConnectr::new().build();
             match spotify {
                 Some(_) => { break; },
                 None => {
