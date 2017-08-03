@@ -1,6 +1,6 @@
 [package]
 name = "connectr"
-version = "0.1.1-rc"
+version = "0.2.0"
 authors = [ "Trevor Bentley <mrmekon@gmail.com>" ]
 description = "Spotify Connect library and systray/menubar application for controlling Spotify devices."
 keywords = ["spotify", "connect", "webapi", "systray", "menubar"]
