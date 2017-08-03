@@ -3,10 +3,9 @@
 [![Windows Build Status](https://ci.appveyor.com/api/projects/status/4afwy0yj2477f84h/branch/master?svg=true)](https://ci.appveyor.com/project/mrmekon/connectr/branch/master)
 [![Crates.io Version](https://img.shields.io/crates/v/connectr.svg)](https://crates.io/crates/connectr)
 
---
+## 
 ### A super lightweight Spotify controller.
-
---
+## 
 
 Connectr is a tiny application that lets you quickly and easily see – or change – what's playing on your Spotify account.
 
@@ -43,7 +42,7 @@ For developers: the API for communicating with the Spotify backend is provided a
 
 ## Screenshots
 
---
+## 
 
 <table><tr><td valign="top">
 
@@ -62,7 +61,7 @@ For developers: the API for communicating with the Spotify backend is provided a
 
 </td></tr></table>
 
---
+## 
 
 
 ## Build Instructions
