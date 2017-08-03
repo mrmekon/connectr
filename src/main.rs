@@ -603,6 +603,13 @@ fn fill_menu<T: TStatusBar>(app: &mut ConnectrApp,
             i += 10;
         }
     }
+
+    status.add_separator();
+    let cb: NSCallback = Box::new(move |_sender, _tx| {
+        let _ = open::that("https://open.spotify.com/search/");
+    });
+    let item = status.add_item("Search Spotify", cb, false);
+
     status.add_separator();
     status.add_quit("Exit");
 }
