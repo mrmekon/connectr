@@ -167,3 +167,10 @@ expire=1492766270
 | System logging                         | <ul><li> [x] </li></ul> | <ul><li> [x] </li></ul> | <ul><li> [ ] </li></ul> |
 
 
+## Notable Dependencies
+
+* [fruitbasket](https://github.com/mrmekon/fruitbasket) - Framework for Mac app lifecycle, written for Connectr.
+* [rubrail](https://github.com/mrmekon/rubrail-rs) - Mac Touch Bar library, written for Connectr.
+* [objc](https://github.com/SSheldon/rust-objc/) - SSheldon's suite of Objective-C wrappers for Rust.
+* [cocoa-rs](https://github.com/servo/cocoa-rs) - Cocoa bindings for Rust, which complement `objc`.
+* [systray](https://github.com/qdot/systray-rs) - Windows systray library for Rust.
