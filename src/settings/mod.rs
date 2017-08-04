@@ -67,7 +67,7 @@ To create your free developer application for Connectr, follow these instruction
 <li> Press the <em>SAVE</em> button at the bottom of Spotify's webpage
 <li> Submit this configuration form
 </ul></p>
-<form method="POST" action="#"><table>
+<form method="POST" action="#" accept-charset="UTF-8"><table>
 <tr><td>Client ID:</td><td><input type="text" name="client_id"></td></tr>
 <tr><td>Client Secret:</td><td><input type="text" name="secret"></td></tr>
 <tr><td colspan=2></br></br></tr></tr>
