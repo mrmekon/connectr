@@ -4,6 +4,3 @@
 [submodule "deps/systray-rs"]
 	path = deps/systray-rs
 	url = https://github.com/mrmekon/systray-rs
-[submodule "deps/rubrail-rs"]
-	path = deps/rubrail-rs
-	url = https://github.com/mrmekon/rubrail-rs
