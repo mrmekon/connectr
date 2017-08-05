@@ -69,28 +69,40 @@ pub enum AccessToken<'a> {
     None,
 }
 
-pub fn http(url: &str, query: &str, body: &str,
+pub fn http(url: &str, query: Option<&str>, body: Option<&str>,
             method: HttpMethod, access_token: AccessToken) -> HttpResponse {
-    let enc_query = percent_encoding::utf8_percent_encode(&query, percent_encoding::QUERY_ENCODE_SET).collect::<String>();
-    let mut data = match method {
-        HttpMethod::POST => { enc_query.as_bytes() },
-        _ => { body.as_bytes() },
-        //_ => { query.as_bytes() }
-    };
-    let query_url = &format!("{}?{}", url, query);
-    let url = match method {
-        HttpMethod::GET | HttpMethod::PUT => match query.len() {
-            0 => url,
-            _ => query_url,
+    let mut headers = List::new();
+    let data = match method {
+        HttpMethod::POST => {
+            match query {
+                Some(q) => {
+                    let enc_query = percent_encoding::utf8_percent_encode(&q, percent_encoding::QUERY_ENCODE_SET).collect::<String>();
+                    enc_query
+                },
+                None => {
+                    let header = format!("Content-Type: application/json");
+                    headers.append(&header).unwrap();
+                    body.unwrap_or("").to_string()
+                }
+            }
         },
-        _ => url
+        _ => { body.unwrap_or("").to_string() },
+    };
+    let mut data = data.as_bytes();
+
+    let url = match method {
+        HttpMethod::GET | HttpMethod::PUT => match query {
+            None => url.to_string(),
+            Some(q) => format!("{}?{}", url, q),
+        },
+        _ => url.to_string()
 
     };
     let mut response = None;
     let mut json_bytes = Vec::<u8>::new();
     {
         let mut easy = Easy::new();
-        easy.url(url).unwrap();
+        easy.url(&url).unwrap();
         match method {
             HttpMethod::POST => {
                 easy.post(true).unwrap();
@@ -111,10 +123,9 @@ pub fn http(url: &str, query: &str, body: &str,
                     AccessToken::Basic(token) => ("Basic", token),
                     _ => ("",""),
                 };
-                let mut list = List::new();
                 let header = format!("Authorization: {} {}", request.0, request.1);
-                list.append(&header).unwrap();
-                easy.http_headers(list).unwrap();
+                headers.append(&header).unwrap();
+                easy.http_headers(headers).unwrap();
             }
         }
 

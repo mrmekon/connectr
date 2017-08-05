@@ -28,6 +28,7 @@ extern crate serde_derive;
 #[derive(Clone, Copy)]
 pub struct SpotifyEndpoints<'a> {
     scopes: &'a str,
+    scopes_version: u32,
     authorize: &'a str,
     token: &'a str,
     devices: &'a str,
@@ -41,10 +42,12 @@ pub struct SpotifyEndpoints<'a> {
     shuffle: &'a str,
     repeat: &'a str,
     player: &'a str,
+    add_to_playlist: &'a str,
 }
 
 pub const SPOTIFY_API: SpotifyEndpoints = SpotifyEndpoints {
-    scopes: "user-read-private streaming user-read-playback-state",
+    scopes: "user-read-private streaming user-read-playback-state playlist-modify-public playlist-modify-private",
+    scopes_version: 1, // increment if scopes change
     authorize: "https://accounts.spotify.com/en/authorize",
     token: "https://accounts.spotify.com/api/token",
     devices: "https://api.spotify.com/v1/me/player/devices",
@@ -58,6 +61,7 @@ pub const SPOTIFY_API: SpotifyEndpoints = SpotifyEndpoints {
     shuffle: "https://api.spotify.com/v1/me/player/shuffle",
     repeat: "https://api.spotify.com/v1/me/player/repeat",
     player: "https://api.spotify.com/v1/me/player",
+    add_to_playlist: "https://api.spotify.com/v1/users",
 };
 
 #[cfg(target_os = "linux")]

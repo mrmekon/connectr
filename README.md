@@ -21,6 +21,7 @@ What it can do:
 * Play/pause
 * Skip tracks
 * Quick-play a saved 'preset'
+* Quick-save playing track to a playlist
 * Select playback device
 * Change volume
 
@@ -88,6 +89,20 @@ On the first launch, Connectr will guide you through setting up a Spotify develo
 * Add a Redirect URI: <em>http://127.0.0.1:5432</em>
 * Copy your <em>Client ID</em> and <em>Client Secret</em> to `connectr.ini` (see below).
 
+### Mac Touch Bar interface
+
+#### Setup
+* Be sure the "Control Strip" is enabled in the Keyboard section of System Preferences, under `Touch Bar shows`.
+* Press the Connectr icon in the Control Strip to expand it.  It will stay expanded until you press the `x` button on the left side.
+* The Control Strip only supports 4 icons, and stacks all new ones on the left-most icon.  If the Connectr icon is missing, it may be hidden "under" another icon.  You can keep clicking the left-most icon to open them all.
+
+#### Controls
+* Double-tap the track title to rotate through modes:
+ * Track and Artist
+ * Track
+ * Artist
+* To quick-save a track, swipe right on track title until a box is drawn around it and release.  Configure quick-save in `connectr.ini` first.
+
 ### Configuration file (connectr.ini) format
 
 **Note:** connectr uses `~/.connectr.ini` if it exists.  If it does _not_ exist, connectr will fallback to trying `connectr.ini` in the directory it is run from.  A template is provided in `connectr.ini.in`.
@@ -102,7 +117,23 @@ connectr's configuration is read from a regular INI file with these sections:
 * **secret** - Spotify web application's Client Secret (string). _ex: `secret = DEFDEFDEFDEF456456456`_
 
 #### [presets]
-* **Your Preset Name** - Key is the display name of a playable preset, as it will appear in the menu.  The value is a Spotify URI to play, in the _spotify:type:aLoNgUnIqUeIdENTIFier_ format. (string).  _ex: `Bakesale = spotify:album:70XjdLKH7HHsFVWoQipP0T` will show as 'Bakesale' in the menu, and will play the specified Sebadoh album when clicked._
+
+One preset per line, in either format:
+
+* [Preset Name] = [Context URI]
+* [Preset Name] = [Context URI],[Quick-save Playlist URI]
+
+Where:
+
+* `Preset Name` is any name you want for the preset
+* `Context URI` is the Spotify context (album, playlist, etc) to play when selected
+* `Quick-save URI` is (optionally) a playlist to save the current track to if 'Quick-Save' is clicked while this preset is playing.
+
+*Example:*
+
+Make a preset called `Bakesale` that plays a Sebadoh album when selected, and saves my favorite tracks from that album to a private playlist:
+
+`Bakesale = spotify:album:70XjdLKH7HHsFVWoQipP0T,spotify:user:mrmekon:playlist:4aqg0RkXSxknWvIXARV7or`
 
 #### [tokens]
 _note: This section is auto-generated and auto-updated at runtime.  You can leave it empty if you make your own config file._
