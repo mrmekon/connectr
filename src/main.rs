@@ -436,12 +436,12 @@ fn reconfig_menu<T: TStatusBar>(status: &mut T) {
         };
         let _ = tx.send(serde_json::to_string(&cmd).unwrap());
     });
-    let _ = status.add_item("Reconfigure Connectr", cb, false);
+    let _ = status.add_item(None, "Reconfigure Connectr", cb, false);
     status.add_separator();
     let cb: NSCallback = Box::new(move |_sender, _tx| {
         let _ = open::that("https://github.com/mrmekon/connectr");
     });
-    let _ = status.add_item("Help!", cb, false);
+    let _ = status.add_item(None, "Help!", cb, false);
     status.add_separator();
     status.add_quit("Exit");
 }
@@ -539,7 +539,7 @@ fn fill_menu<T: TStatusBar>(app: &mut ConnectrApp,
             };
             let _ = tx.send(serde_json::to_string(&cmd).unwrap());
         });
-        app.menu.play = status.add_item(&play_str, cb, false);
+        app.menu.play = status.add_item(None, &play_str, cb, false);
         touchbar.update_play_button(is_playing);
 
         let cb: NSCallback = Box::new(move |sender, tx| {
@@ -550,7 +550,7 @@ fn fill_menu<T: TStatusBar>(app: &mut ConnectrApp,
             };
             let _ = tx.send(serde_json::to_string(&cmd).unwrap());
         });
-        app.menu.next = status.add_item("Next", cb, false);
+        app.menu.next = status.add_item(None, "Next", cb, false);
 
         let cb: NSCallback = Box::new(move |sender, tx| {
             let cmd = MenuCallbackCommand {
@@ -560,7 +560,7 @@ fn fill_menu<T: TStatusBar>(app: &mut ConnectrApp,
             };
             let _ = tx.send(serde_json::to_string(&cmd).unwrap());
         });
-        app.menu.prev = status.add_item("Previous", cb, false);
+        app.menu.prev = status.add_item(None, "Previous", cb, false);
 
         let cb: NSCallback = Box::new(move |sender, tx| {
             let cmd = MenuCallbackCommand {
@@ -570,7 +570,7 @@ fn fill_menu<T: TStatusBar>(app: &mut ConnectrApp,
             };
             let _ = tx.send(serde_json::to_string(&cmd).unwrap());
         });
-        app.menu.save = status.add_item("Quick-Save", cb, false);
+        app.menu.save = status.add_item(None, "Quick-Save", cb, false);
     }
 
     status.add_label("");
@@ -593,7 +593,7 @@ fn fill_menu<T: TStatusBar>(app: &mut ConnectrApp,
                 let _ = tx.send(serde_json::to_string(&cmd).unwrap());
             });
             let selected = player_state.playing_from_context(&preset.1);
-            let item = status.add_item(&name.clone(), cb, selected);
+            let item = status.add_item(None, &name.clone(), cb, selected);
             app.menu.preset.push(item);
         }
     }
@@ -635,7 +635,7 @@ fn fill_menu<T: TStatusBar>(app: &mut ConnectrApp,
             };
             let _ = tx.send(serde_json::to_string(&cmd).unwrap());
         });
-        let item = status.add_item(&dev.name, cb, dev.is_active);
+        let item = status.add_item(None, &dev.name, cb, dev.is_active);
         if dev.is_active {
             cur_volume_exact = dev.volume_percent.unwrap_or(0);
             cur_volume = match dev.volume_percent {
@@ -651,8 +651,9 @@ fn fill_menu<T: TStatusBar>(app: &mut ConnectrApp,
     info!("");
 
     status.add_label("");
-    status.add_label("Volume:");
+
     status.add_separator();
+    let volume_menu = status.add_submenu("Volume", Box::new(move |_,_| {}));
     {
         let mut i = 0;
         while i <= 100 {
@@ -665,7 +666,7 @@ fn fill_menu<T: TStatusBar>(app: &mut ConnectrApp,
                 };
                 let _ = tx.send(serde_json::to_string(&cmd).unwrap());
             });
-            let item = status.add_item(&vol_str, cb, i == cur_volume);
+            let item = status.add_item(Some(volume_menu), &vol_str, cb, i == cur_volume);
             app.menu.volume.push(item);
             i += 10;
         }
@@ -696,7 +697,7 @@ fn fill_menu<T: TStatusBar>(app: &mut ConnectrApp,
     let cb: NSCallback = Box::new(move |_sender, _tx| {
         let _ = open::that("https://open.spotify.com/search/");
     });
-    let _ = status.add_item("Search Spotify", cb, false);
+    let _ = status.add_item(None, "Search Spotify", cb, false);
 
     status.add_separator();
     status.add_quit("Exit");

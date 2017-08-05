@@ -49,7 +49,7 @@ impl TStatusBar for OSXStatusBar {
                 app: nsapp,
                 status_bar_item: status_bar.statusItemWithLength_(NSVariableStatusItemLength),
                 menu_bar: NSMenu::new(nil),
-                object: NSObj::alloc(tx).setup(),
+                object: NSObj::alloc(tx),
             };
 
             // Default mode for menu bar items: blue highlight when selected
@@ -150,7 +150,10 @@ impl TStatusBar for OSXStatusBar {
             self.menu_bar.addItem_(sep);
         }
     }
-    fn add_item(&mut self, item: &str, callback: NSCallback, selected: bool) -> *mut Object {
+    // TODO: whole API should accept menu option.  this whole thing should
+    // be split out into its own recursive menu-builder trait.  this is
+    // horrible.
+    fn add_item(&mut self, menu: Option<*mut Object>,item: &str, callback: NSCallback, selected: bool) -> *mut Object {
         unsafe {
             let txt = NSString::alloc(nil).init_str(item);
             let quit_key = NSString::alloc(nil).init_str("");
@@ -165,9 +168,32 @@ impl TStatusBar for OSXStatusBar {
                 let _: () = msg_send![app_menu_item, setState: 1];
             }
             let item: *mut Object = app_menu_item;
-            self.menu_bar.addItem_(app_menu_item);
+            match menu {
+                Some(menu) => { menu.addItem_(app_menu_item); },
+                None => { self.menu_bar.addItem_(app_menu_item); }
+            }
             let _: () = msg_send![app_menu_item, release];
             item
+        }
+    }
+    fn add_submenu(&mut self, label: &str, callback: NSCallback) -> *mut Object {
+        unsafe {
+            let submenu = NSMenu::new(nil);
+            let txt = NSString::alloc(nil).init_str(label);
+            let quit_key = NSString::alloc(nil).init_str("");
+            let app_menu_item = NSMenuItem::alloc(nil)
+                .initWithTitle_action_keyEquivalent_(txt,
+                                                     self.object.selector(),
+                                                     quit_key);
+            self.object.add_callback(app_menu_item, callback);
+            let objc = self.object.take_objc();
+            let _: () = msg_send![app_menu_item, setTarget: objc];
+            let _ = msg_send![app_menu_item, setSubmenu: submenu];
+            let _ = msg_send![txt, release];
+            let _ = msg_send![quit_key, release];
+            self.menu_bar.addItem_(app_menu_item);
+            let _ = msg_send![app_menu_item, release];
+            submenu
         }
     }
     fn update_item(&mut self, item: *mut Object, label: &str) {
