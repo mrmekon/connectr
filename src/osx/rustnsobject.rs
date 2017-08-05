@@ -21,13 +21,11 @@ use self::objc_id::Id;
 use self::objc_id::WeakId;
 use self::objc_id::Shared;
 
-use std::sync::mpsc::{channel, Sender, Receiver};
+use std::sync::mpsc::Sender;
 
 pub struct RustWrapperClass {
     pub objc: Id<ObjcSubclass, Shared>,
-    pub value: u64,
     pub cb_fn: Option<Box<Fn(&mut RustWrapperClass, u64)>>,
-    pub channel: (Sender<u32>, Receiver<u32>),
     pub map: BTreeMap<u64, NSCallback>,
     pub tx: Sender<String>,
 }
@@ -51,7 +49,6 @@ impl NSObjCallbackTrait for RustWrapperClass {
 
 pub trait NSObjTrait {
     fn alloc(tx: Sender<String>) -> NSObj;
-    fn setup(self) -> NSObj;
     fn selector(&self) -> Sel;
     fn take_objc(&mut self) -> NSObjc;
     fn add_callback(&mut self, *const Object, NSCallback);
@@ -66,8 +63,6 @@ impl NSObjTrait for NSObj {
         let objc = ObjcSubclass::new().share();
         let rust = Box::new(RustWrapperClass {
             objc: objc,
-            value: 716,
-            channel: channel(),
             map: BTreeMap::<u64,NSCallback>::new(),
             cb_fn: None,
             tx: tx,
@@ -77,9 +72,6 @@ impl NSObjTrait for NSObj {
             let _:() = msg_send![rust.objc, setRustData: ptr];
         }
         return rust
-    }
-    fn setup(self) -> NSObj {
-        self
     }
     fn selector(&self) -> Sel {
         sel!(cb:)

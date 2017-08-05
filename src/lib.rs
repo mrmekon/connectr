@@ -86,7 +86,8 @@ pub trait TStatusBar {
     fn clear_items(&mut self);
     fn add_separator(&mut self);
     fn add_label(&mut self, label: &str);
-    fn add_item(&mut self, item: &str, callback: NSCallback, selected: bool) -> *mut Object;
+    fn add_submenu(&mut self, label: &str, callback: NSCallback) -> *mut Object;
+    fn add_item(&mut self, menu: Option<*mut Object>,item: &str, callback: NSCallback, selected: bool) -> *mut Object;
     fn add_quit(&mut self, label: &str);
     fn update_item(&mut self, item: *mut Object, label: &str);
     fn sel_item(&mut self, sender: u64);
@@ -105,8 +106,9 @@ impl TStatusBar for DummyStatusBar {
     fn can_redraw(&mut self) -> bool { true }
     fn clear_items(&mut self) {}
     fn add_separator(&mut self) {}
+    fn add_submenu(&mut self, _: &str, _: NSCallback) -> *mut Object { 0 as *mut Object }
     fn add_label(&mut self, _: &str) {}
-    fn add_item(&mut self, _: &str, _: NSCallback, _: bool) -> *mut Object { 0 as *mut Object }
+    fn add_item(&mut self, _: Option<*mut Object>, _: &str, _: NSCallback, _: bool) -> *mut Object{ 0 as *mut Object }
     fn add_quit(&mut self, _: &str) {}
     fn update_item(&mut self, _: *mut Object, _: &str) {}
     fn sel_item(&mut self, _: u64) {}
