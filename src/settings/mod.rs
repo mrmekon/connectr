@@ -22,6 +22,22 @@ pub struct Settings {
     pub refresh_token: Option<String>,
     pub expire_utc: Option<u64>,
     pub presets: Vec<(String,String)>,
+    pub default_quicksave: Option<String>,
+    pub quicksave: BTreeMap<String, String>,
+}
+
+impl Settings {
+    pub fn quick_save_playlist(&self, context: &str) -> Option<&str> {
+        match self.quicksave.get(context) {
+            Some(ref uri) => Some(&uri),
+            None => {
+                match self.default_quicksave {
+                    Some(ref uri) => Some(&uri),
+                    None => None,
+                }
+            }
+        }
+    }
 }
 
 fn default_inifile() -> String {
@@ -68,11 +84,30 @@ To create your free developer application for Connectr, follow these instruction
 <li> Submit this configuration form
 </ul></p>
 <form method="POST" action="#" accept-charset="UTF-8"><table>
-<tr><td>Client ID:</td><td><input type="text" name="client_id"></td></tr>
-<tr><td>Client Secret:</td><td><input type="text" name="secret"></td></tr>
+<tr><td colspan=2><h3>Spotify Credentials (all fields required):</h3></td></tr>
+<tr><td>Client ID:</td><td><input type="text" name="client_id" style="width:400px;"></td></tr>
+<tr><td>Client Secret:</td><td><input type="text" name="secret" style="width:400px;"></td></tr>
 <tr><td colspan=2></br></br></tr></tr>
-<tr><td>Presets:</br>(optional, one per line)</td><td><textarea rows="10" cols="80"  name="presets" placeholder="First Preset Name=spotify:user:spotify:playlist:37i9dQZEVXboyJ0IJdpcuT"></textarea></td></tr>
-<tr><td colspan=2><center><input type="submit" value="Write config file"></center></td></tr>
+<tr><td colspan=2><h3>Presets (all fields optional):</h3>
+    <div style="width:600px;">
+    Presets let you start your favorite Spotify contexts (playlist, album, artist, etc) from Connectr.
+    You can add an optional "quick save" playlist for each preset, to quickly save tracks you like to a known playlist.
+    For instance, you might have a "Discover Weekly" preset, and a quick save to a "Best of Discover Weekly" playlist.
+    You can also set a global "quick save" playlist, where tracks are saved if not playing from a preset with an associated quick-save playlist.</br>
+    </br>
+    All contexts must be specified in Spotify's URI format: ex: <code>spotify:album:2p2UgYlbg4yG44IKDp08Q8</code>
+    </div>
+    </br>
+    One preset per line, in either format::</br>
+    &nbsp;&nbsp;&nbsp;<code>[Preset Name] = [Context URI]</code></br>
+    &nbsp;&nbsp;&nbsp;<code>[Preset Name] = [Context URI],[Quick-save Playlist URI]</code>
+    </br></br>
+</td></tr>
+<tr><td>Presets:</br>(one per line)</td><td><textarea rows="10" cols="100"  name="presets" placeholder="First Preset Name = spotify:user:spotify:playlist:37i9dQZEVXboyJ0IJdpcuT"></textarea></td></tr>
+<tr><td style="width:150px;">Quick-Save URI:</br>(playlist URI)</td><td>
+    <input type="text" name="quicksave_default" style="width:400px;"></td></tr>
+<tr><td colspan=2></br></br></tr></tr>
+<tr><td colspan=2><center><input type="submit" value="Save Configuration" style="height:50px; width: 300px; font-size:20px;"></center></td></tr>
 </br>
 </table></form>
 </br>
@@ -117,7 +152,7 @@ pub fn save_web_config(mut config: BTreeMap<String,String>) -> Ini {
     c
 }
 
-pub fn read_settings() -> Option<Settings> {
+pub fn read_settings(scopes_version: u32) -> Option<Settings> {
     info!("Attempting to read config file.");
     let conf = match Ini::load_from_file(&inifile()) {
         Ok(c) => c,
@@ -134,6 +169,10 @@ pub fn read_settings() -> Option<Settings> {
 
     let section = conf.section(Some("connectr".to_owned())).unwrap();
     let port = section.get("port").unwrap().parse().unwrap();
+    let quicksave_default = match section.get("quicksave_default") {
+        Some(uri) => Some(uri.to_string()),
+        None => None,
+    };
 
     let section = conf.section(Some("application".to_owned())).unwrap();
     let secret = section.get("secret").unwrap();
@@ -156,30 +195,48 @@ pub fn read_settings() -> Option<Settings> {
     let mut refresh = None;
     let mut expire_utc = None;
     if let Some(section) = conf.section(Some("tokens".to_owned())) {
-        access = Some(section.get("access").unwrap().clone());
-        refresh = Some(section.get("refresh").unwrap().clone());
-        expire_utc = Some(section.get("expire").unwrap().parse().unwrap());
-        info!("Read access token from INI!");
+        let saved_version = section.get("version");
+        // Only accept saved tokens if the scopes version matches.  Otherwise
+        // it will authenticate but some actions will be invalid.
+        if saved_version.is_some() &&
+            saved_version.unwrap().parse::<u32>().unwrap() == scopes_version {
+            access = Some(section.get("access").unwrap().clone());
+            refresh = Some(section.get("refresh").unwrap().clone());
+            expire_utc = Some(section.get("expire").unwrap().parse().unwrap());
+            info!("Read access token from INI!");
+        }
     }
 
     let mut presets = Vec::<(String,String)>::new();
+    let mut quicksave = BTreeMap::<String,String>::new();
     if let Some(section) = conf.section(Some("presets".to_owned())) {
         for (key, value) in section {
-            presets.push((key.to_owned(), value.to_owned()));
+            let mut fields = value.split(",");
+            let uri = fields.next().unwrap().trim(); // URI is required
+            let save_uri = fields.next(); // quicksave is optional
+            presets.push((key.to_owned(), uri.to_owned()));
+            if let Some(save_uri) = save_uri {
+                quicksave.insert(uri.to_owned(), save_uri.trim().to_owned());
+            }
         }
     }
 
     Some(Settings { secret: secret.to_string(), client_id: client_id.to_string(), port: port,
                     access_token: access, refresh_token: refresh, expire_utc: expire_utc,
-                    presets: presets})
+                    presets: presets,
+                    default_quicksave: quicksave_default,
+                    quicksave: quicksave,
+    })
 }
 
 pub type SettingsError = String;
-pub fn save_tokens(access: &str, refresh: &str, expire_utc: u64) -> Result<(), SettingsError> {
+pub fn save_tokens(version: u32, access: &str,
+                   refresh: &str, expire_utc: u64) -> Result<(), SettingsError> {
     let mut conf = Ini::load_from_file(&inifile()).unwrap();
     conf.with_section(Some("tokens".to_owned()))
         .set("access", access)
         .set("refresh", refresh)
+        .set("version", format!("{}",version))
         .set("expire", expire_utc.to_string());
     conf.write_to_file(&inifile()).unwrap();
     Ok(())

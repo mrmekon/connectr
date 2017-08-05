@@ -30,6 +30,7 @@ mod tests {
 
     pub const TEST_API: SpotifyEndpoints = SpotifyEndpoints {
         scopes: "user-read-private streaming user-read-playback-state",
+        scopes_version: 1,
         authorize: "http://127.0.0.1:9799/en/authorize",
         token: "http://127.0.0.1:9799/api/token",
         devices: "http://127.0.0.1:9799/v1/me/player/devices",
@@ -43,6 +44,7 @@ mod tests {
         shuffle: "http://127.0.0.1:9799/v1/me/player/shuffle",
         repeat: "http://127.0.0.1:9799/v1/me/player/repeat",
         player: "http://127.0.0.1:9799/v1/me/player",
+        add_to_playlist: "http://127.0.0.1:9799/v1/users",
     };
 
     /// Macro to parse the body of a POST request and send a response.
