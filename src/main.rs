@@ -69,6 +69,7 @@ enum CallbackAction {
     Preset,
     Redraw,
     Reconfigure,
+    SaveTrack,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -83,6 +84,7 @@ struct MenuItems {
     play: MenuItem,
     next: MenuItem,
     prev: MenuItem,
+    save: MenuItem,
     preset: Vec<MenuItem>,
     volume: Vec<MenuItem>,
 }
@@ -206,28 +208,33 @@ impl TouchbarUI {
         // Fade text color to green as finger swipes right across the label, and
         // add a solid white border indicating the label is 'selected' after a
         // long enough slide.  Will be used for 'swipe to save' feature.
+        let tx_clone = tx.clone();
         touchbar.add_item_swipe_gesture(&playing_label, Box::new(move |item,state,translation| {
-            let color: f64 = match translation.abs().trunc() as u32 {
-                t if t < 10 => 1.0,
-                t if t > 150 => 0.0,
-                _ => (45. / translation.abs()),
+            let rgba = match translation {
+                t if t > 170. => (0.1, 1.0, 0.7, 1.0),
+                _ => (0.9, 0.9, 0.9, 1.0),
             };
-            let rgba = match state {
-                SwipeState::Ended => (1.0, 1.0, 1.0, 1.0),
-                _ => {
-                    match translation.is_sign_positive() {
-                        true => (color, 1.0, color, 1.0),
-                        false => (1.0, 1.0, 1.0, 1.0),
+            match state {
+                SwipeState::Cancelled | SwipeState::Failed | SwipeState::Unknown => {
+                    unsafe { rubrail::util::set_text_color(item, 1., 1., 1., 1.); }
+                },
+                SwipeState::Ended => {
+                    unsafe { rubrail::util::set_text_color(item, 1., 1., 1., 1.); }
+                    match translation {
+                        t if t > 170. => {
+                            let cmd = MenuCallbackCommand {
+                                action: CallbackAction::SaveTrack,
+                                sender: 0,
+                                data: String::new(),
+                            };
+                            let _ = tx_clone.send(serde_json::to_string(&cmd).unwrap());
+                        },
+                        _ => {},
                     }
                 }
-            };
-            unsafe { rubrail::util::set_text_color(item, rgba.0, rgba.1, rgba.2, rgba.3); }
-            if translation > 170. && state != SwipeState::Ended {
-                unsafe { rubrail::util::set_bg_color(item, 1.0, 1.0, 1.0, 0.95); }
-                // TODO: save track as favorite
-            }
-            else {
-                unsafe { rubrail::util::set_bg_color(item, 0.0, 0.0, 0.0, 0.0); }
+                _ => {
+                    unsafe { rubrail::util::set_text_color(item, rgba.0, rgba.1, rgba.2, rgba.3); }
+                }
             }
         }));
 
@@ -509,6 +516,16 @@ fn fill_menu<T: TStatusBar>(app: &mut ConnectrApp,
             let _ = tx.send(serde_json::to_string(&cmd).unwrap());
         });
         app.menu.prev = status.add_item("Previous", cb, false);
+
+        let cb: NSCallback = Box::new(move |sender, tx| {
+            let cmd = MenuCallbackCommand {
+                action: CallbackAction::SaveTrack,
+                sender: sender,
+                data: String::new(),
+            };
+            let _ = tx.send(serde_json::to_string(&cmd).unwrap());
+        });
+        app.menu.save = status.add_item("Quick-Save", cb, false);
     }
 
     status.add_label("");
@@ -530,7 +547,8 @@ fn fill_menu<T: TStatusBar>(app: &mut ConnectrApp,
                 };
                 let _ = tx.send(serde_json::to_string(&cmd).unwrap());
             });
-            let item = status.add_item(&name.clone(), cb, false);
+            let selected = player_state.playing_from_context(&preset.1);
+            let item = status.add_item(&name.clone(), cb, selected);
             app.menu.preset.push(item);
         }
     }
@@ -608,7 +626,7 @@ fn fill_menu<T: TStatusBar>(app: &mut ConnectrApp,
     let cb: NSCallback = Box::new(move |_sender, _tx| {
         let _ = open::that("https://open.spotify.com/search/");
     });
-    let item = status.add_item("Search Spotify", cb, false);
+    let _ = status.add_item("Search Spotify", cb, false);
 
     status.add_separator();
     status.add_quit("Exit");
@@ -620,6 +638,7 @@ fn clear_menu<T: TStatusBar>(app: &mut ConnectrApp, status: &mut T) {
         play: ptr::null_mut(),
         next: ptr::null_mut(),
         prev: ptr::null_mut(),
+        save: ptr::null_mut(),
         preset: Vec::<MenuItem>::new(),
         volume: Vec::<MenuItem>::new(),
     };
@@ -658,6 +677,25 @@ fn handle_callback(player_state: Option<&connectr::PlayerState>,
         }
         CallbackAction::Redraw => {
             refresh = RefreshTime::Redraw;
+        }
+        CallbackAction::SaveTrack => {
+            if let Some(player_state) = player_state {
+                if let Some(ref ctx) = player_state.context {
+                    let playlist: Option<String>;
+                    {
+                        match spotify.quick_save_playlist(&ctx.uri) {
+                            Some(u) => playlist = Some(u.to_owned()),
+                            None => playlist = None,
+                        }
+                    }
+                    if let Some(playlist) = playlist {
+                        if let Some(ref item) = player_state.item {
+                            let track = item.uri.to_owned();
+                            require(spotify.save_track(track, playlist));
+                        }
+                    }
+                }
+            }
         }
         CallbackAction::Reconfigure => {}
     }
@@ -879,6 +917,7 @@ fn main() {
             play: ptr::null_mut(),
             next: ptr::null_mut(),
             prev: ptr::null_mut(),
+            save: ptr::null_mut(),
             preset: Vec::<MenuItem>::new(),
             volume: Vec::<MenuItem>::new(),
         },
