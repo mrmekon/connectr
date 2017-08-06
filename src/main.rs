@@ -16,6 +16,10 @@ extern crate fruitbasket;
 use fruitbasket::FruitApp;
 use fruitbasket::FruitError;
 
+extern crate timer;
+extern crate chrono;
+use chrono::offset::utc::UTC;
+
 extern crate ctrlc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -930,6 +934,16 @@ fn main() {
     loading_menu(&mut status);
     let mut touchbar = TouchbarUI::init(tx);
     info!("Created touchbar.");
+
+    spotify.schedule_alarm(connectr::AlarmEntry {
+        time: "18:34".to_string(),
+        repeat: connectr::AlarmRepeat::Daily,
+        context: connectr::PlayContext::new()
+            .context_uri("spotify:user:mrmekon:playlist:2NZx9rQlpDTEhjrbCIwh0Q")
+            .offset_position(0)
+            .build(),
+        device: "adf47bd71923ad681f33e3a778c56fc33f4a63a8".to_string(),
+    });
 
     let mut tiny: Option<process::Child> = None;
     if let Some(wine_dir) = find_wine_path() {
