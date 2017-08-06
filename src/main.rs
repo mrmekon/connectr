@@ -18,7 +18,6 @@ use fruitbasket::FruitError;
 
 extern crate timer;
 extern crate chrono;
-use chrono::offset::utc::UTC;
 
 extern crate ctrlc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -74,6 +73,7 @@ enum CallbackAction {
     Redraw,
     Reconfigure,
     SaveTrack,
+    EditAlarms,
 }
 
 #[derive(Serialize, Deserialize, Debug)]
@@ -627,6 +627,17 @@ fn fill_menu<T: TStatusBar>(app: &mut ConnectrApp,
     }
 
     status.add_separator();
+    let cb: NSCallback = Box::new(move |sender, tx| {
+        let cmd = MenuCallbackCommand {
+            action: CallbackAction::EditAlarms,
+            sender: sender,
+            data: String::new(),
+        };
+        let _ = tx.send(serde_json::to_string(&cmd).unwrap());
+    });
+    let _ = status.add_item("Edit Alarms", cb, false);
+
+    status.add_separator();
     let cb: NSCallback = Box::new(move |_sender, _tx| {
         let _ = open::that("https://open.spotify.com/search/");
     });
@@ -702,6 +713,7 @@ fn handle_callback(player_state: Option<&connectr::PlayerState>,
             }
         }
         CallbackAction::Reconfigure => {}
+        CallbackAction::EditAlarms => {}
     }
     refresh
 }
@@ -810,6 +822,17 @@ fn create_spotify_thread(rx_cmd: Receiver<String>) -> SpotifyThread {
             *preset_writer = spotify.get_presets().clone();
             let _ = tx.send(SpotifyThreadCommand::Update);
         }
+        let alarm = spotify.schedule_alarm(connectr::AlarmEntry {
+            time: "19:46".to_string(),
+            repeat: connectr::AlarmRepeat::Daily,
+            context: connectr::PlayContext::new()
+                .context_uri("spotify:user:mrmekon:playlist:2NZx9rQlpDTEhjrbCIwh0Q")
+                .offset_position(0)
+                .build(),
+            device: "adf47bd71923ad681f33e3a778c56fc33f4a63a8".to_string(),
+        }).unwrap();
+        let _ = spotify.alarm_disable(alarm);
+        let _ = spotify.alarm_reschedule(alarm);
         loop {
             if rx.try_recv().is_ok() {
                 // Main thread tells us to shutdown
@@ -823,6 +846,9 @@ fn create_spotify_thread(rx_cmd: Receiver<String>) -> SpotifyThread {
             if let Ok(s) = rx_cmd.recv_timeout(Duration::from_millis(200)) {
                 info!("Received {}", s);
                 let cmd: MenuCallbackCommand = serde_json::from_str(&s).unwrap();
+                if cmd.action == CallbackAction::EditAlarms {
+                    spotify.alarm_configure();
+                }
                 let refresh_strategy =  handle_callback(player_state.read().unwrap().as_ref(),
                                                         &mut spotify, &cmd);
                 refresh_time_utc = match refresh_strategy {
@@ -934,16 +960,6 @@ fn main() {
     loading_menu(&mut status);
     let mut touchbar = TouchbarUI::init(tx);
     info!("Created touchbar.");
-
-    spotify.schedule_alarm(connectr::AlarmEntry {
-        time: "18:34".to_string(),
-        repeat: connectr::AlarmRepeat::Daily,
-        context: connectr::PlayContext::new()
-            .context_uri("spotify:user:mrmekon:playlist:2NZx9rQlpDTEhjrbCIwh0Q")
-            .offset_position(0)
-            .build(),
-        device: "adf47bd71923ad681f33e3a778c56fc33f4a63a8".to_string(),
-    });
 
     let mut tiny: Option<process::Child> = None;
     if let Some(wine_dir) = find_wine_path() {

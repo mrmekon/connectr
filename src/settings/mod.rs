@@ -1,12 +1,15 @@
 extern crate ini;
 use self::ini::Ini;
 use super::http;
+use super::AlarmRepeat;
+use super::AlarmConfig;
 
 extern crate time;
 extern crate fruitbasket;
 
 use std::env;
 use std::path;
+use std::str::FromStr;
 use std::collections::BTreeMap;
 
 const INIFILE: &'static str = "connectr.ini";
@@ -24,6 +27,7 @@ pub struct Settings {
     pub presets: Vec<(String,String)>,
     pub default_quicksave: Option<String>,
     pub quicksave: BTreeMap<String, String>,
+    pub alarms: Vec<AlarmConfig>,
 }
 
 impl Settings {
@@ -126,6 +130,36 @@ If something goes wrong or changes, edit or delete that file.</small>
     config
 }
 
+pub fn request_web_alarm_config() -> BTreeMap<String,String> {
+    let form = format!(r###"
+{}
+<!DOCTYPE HTML>
+<html><head><title>Connectr Alarm Clocks</title><style> tr:nth-child(even) {{ background: #f2f2f2; }} </style></head>
+<body><h2>Connectr Alarm Clocks</h2> Input in 24-hour time format:
+<form method="POST" action="#" accept-charset="UTF-8"><table>
+<tr><th style="width:100px; border-bottom: 1px solid #ddd;" align="center">Time</th><th align="center" style="width:100px;border-bottom: 1px solid #ddd;">Repeat</th></tr>
+
+<tr><td align="center"><input style="width:40px;" type="number" name="hour_0" min="0" max="23" size="3" maxlength="2">:<input style="width:40px;" type="number" name="minute_0" min="0" max="59" size="3" maxlength="2"></td><td align="center"><select name="repeat_0"><option value="daily">Daily</option><option value="weekdays">Weekdays</option><option value="weekends">Weekends</option></select></td></tr>
+
+<tr><td align="center"><input style="width:40px;" type="number" name="hour_1" min="0" max="23" size="3" maxlength="2">:<input style="width:40px;" type="number" name="minute_1" min="0" max="59" size="3" maxlength="2"></td><td align="center"><select name="repeat_1"><option value="daily">Daily</option><option value="weekdays">Weekdays</option><option value="weekends">Weekends</option></select></td></tr>
+
+<tr><td align="center"><input style="width:40px;" type="number" name="hour_2" min="0" max="23" size="3" maxlength="2">:<input style="width:40px;" type="number" name="minute_2" min="0" max="59" size="3" maxlength="2"></td><td align="center"><select name="repeat_2"><option value="daily">Daily</option><option value="weekdays">Weekdays</option><option value="weekends">Weekends</option></select></td></tr>
+
+<tr><td align="center"><input style="width:40px;" type="number" name="hour_3" min="0" max="23" size="3" maxlength="2">:<input style="width:40px;" type="number" name="minute_3" min="0" max="59" size="3" maxlength="2"></td><td align="center"><select name="repeat_3"><option value="daily">Daily</option><option value="weekdays">Weekdays</option><option value="weekends">Weekends</option></select></td></tr>
+
+<tr><td align="center"><input style="width:40px;" type="number" name="hour_4" min="0" max="23" size="3" maxlength="2">:<input style="width:40px;" type="number" name="minute_4" min="0" max="59" size="3" maxlength="2"></td><td align="center"><select name="repeat_4"><option value="daily">Daily</option><option value="weekdays">Weekdays</option><option value="weekends">Weekends</option></select></td></tr>
+
+<tr><td colspan=2><center><input type="submit" value="Save Configuration" style="height:50px; width: 300px; font-size:20px;"></center></td></tr></br>
+</table></form>
+</body></html>
+"###, "HTTP/1.1 200 OK\r\n\r\n");
+    let reply = format!("{}Configuration saved.  You can close this window.",
+                        "HTTP/1.1 200 OK\r\n\r\n");
+    let mut config = BTreeMap::<String,String>::new();
+    config.append(&mut http::config_request_local_webserver(WEB_PORT, form, reply));
+    config
+}
+
 pub fn save_web_config(mut config: BTreeMap<String,String>) -> Ini {
     let mut c = Ini::new();
     let port = config.remove("port").unwrap();
@@ -154,6 +188,54 @@ pub fn save_web_config(mut config: BTreeMap<String,String>) -> Ini {
     }
     c.write_to_file(&default_inifile()).unwrap();
     c
+}
+
+pub fn save_web_alarm_config(config: BTreeMap<String,String>) -> Result<(), SettingsError> {
+    let file = inifile();
+    let mut conf: Ini;
+    match Ini::load_from_file(&file) {
+        Ok(c) => conf = c,
+        Err(_) => return Err("Couldn't open configuration.".to_string()),
+    }
+    let mut entries: Vec<AlarmConfig> = Vec::with_capacity(5);
+    for _ in 0..5 {
+        entries.push(Default::default());
+    }
+    for pair in config.iter() {
+        let key = pair.0;
+        let value = pair.1;
+        // are you kidding me??
+        let idx = key.chars().rev().take(1).collect::<Vec<char>>()[0].to_digit(10).unwrap() as usize;
+        let entry = entries.get_mut(idx).unwrap();
+        match key.split("_").next().unwrap() {
+            "hour" => {
+                if let Ok(val) = value.parse() {
+                    entry.hour = val;
+                }
+            },
+            "minute" => {
+                if let Ok(val) = value.parse() {
+                    entry.minute = val;
+                }
+            },
+            "repeat" => {
+                entry.repeat = match value.as_ref() {
+                    "weekdays" => AlarmRepeat::Weekdays,
+                    "weekends" => AlarmRepeat::Weekends,
+                    _ => AlarmRepeat::Daily,
+                };
+            },
+            _ => {},
+        }
+    }
+    for i in 0..5 {
+        info!("Entry {}: {:?}", i, entries.get(i).unwrap());
+    }
+    for (idx,entry) in entries.iter().enumerate() {
+        conf.set_to(Some("alarms"), format!("alarm{}", idx+1), entry.to_string());
+    }
+    conf.write_to_file(&file).unwrap();
+    Ok(())
 }
 
 pub fn read_settings(scopes_version: u32) -> Option<Settings> {
@@ -224,12 +306,22 @@ pub fn read_settings(scopes_version: u32) -> Option<Settings> {
             }
         }
     }
+    let mut alarms = Vec::<AlarmConfig>::new();
+    if let Some(section) = conf.section(Some("alarms".to_owned())) {
+        for (_key, value) in section {
+            match AlarmConfig::from_str(value) {
+                Ok(a) => alarms.push(a),
+                Err(_) => {},
+            }
+        }
+    }
 
     Some(Settings { secret: secret.to_string(), client_id: client_id.to_string(), port: port,
                     access_token: access, refresh_token: refresh, expire_utc: expire_utc,
                     presets: presets,
                     default_quicksave: quicksave_default,
                     quicksave: quicksave,
+                    alarms: alarms,
     })
 }
 
