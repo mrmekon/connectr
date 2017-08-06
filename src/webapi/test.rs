@@ -6,7 +6,7 @@ mod tests {
     extern crate time;
 
     extern crate chrono;
-    use self::chrono::UTC;
+    use webapi::chrono::TimeZone;
 
     use super::super::*;
     use super::super::super::SpotifyEndpoints;
@@ -192,7 +192,10 @@ mod tests {
 
     #[test]
     fn test_alarm_scheduler() {
-        let mut spotify = SpotifyConnectr::new().with_api(TEST_API);
+        let mut spotify = SpotifyConnectr::new()
+            .with_api(TEST_API)
+            .build()
+            .unwrap();
 
         // From a Friday morning
         let today = Local.ymd(2017, 06, 16).and_hms_milli(9, 00, 00, 0);
@@ -200,22 +203,22 @@ mod tests {
         // Daily, later the same day
         let entry = build_alarm_entry("21:00", AlarmRepeat::Daily, today.clone());
         let alarm = spotify.schedule_alarm(entry).unwrap();
-        assert_eq!(alarm.format("%Y-%m-%d %H:%M:%S").to_string(), "2017-06-16 21:00:00");
+        assert_eq!(spotify.alarm_time(alarm).unwrap().format("%Y-%m-%d %H:%M:%S").to_string(), "2017-06-16 21:00:00");
 
         // Daily, the next day
         let entry = build_alarm_entry("08:00", AlarmRepeat::Daily, today.clone());
         let alarm = spotify.schedule_alarm(entry).unwrap();
-        assert_eq!(alarm.format("%Y-%m-%d %H:%M:%S").to_string(), "2017-06-17 08:00:00");
+        assert_eq!(spotify.alarm_time(alarm).unwrap().format("%Y-%m-%d %H:%M:%S").to_string(), "2017-06-17 08:00:00");
 
         // Weekends, the next day
         let entry = build_alarm_entry("08:00", AlarmRepeat::Weekends, today.clone());
         let alarm = spotify.schedule_alarm(entry).unwrap();
-        assert_eq!(alarm.format("%Y-%m-%d %H:%M:%S").to_string(), "2017-06-17 08:00:00");
+        assert_eq!(spotify.alarm_time(alarm).unwrap().format("%Y-%m-%d %H:%M:%S").to_string(), "2017-06-17 08:00:00");
 
         // Weekdays, the next week
         let entry = build_alarm_entry("08:00", AlarmRepeat::Weekdays, today.clone());
         let alarm = spotify.schedule_alarm(entry).unwrap();
-        assert_eq!(alarm.format("%Y-%m-%d %H:%M:%S").to_string(), "2017-06-19 08:00:00");
+        assert_eq!(spotify.alarm_time(alarm).unwrap().format("%Y-%m-%d %H:%M:%S").to_string(), "2017-06-19 08:00:00");
 
         // From a Wednesday night
         let today = Local.ymd(2017, 06, 21).and_hms_milli(21, 00, 00, 0);
@@ -223,21 +226,28 @@ mod tests {
         // Daily, later the same day
         let entry = build_alarm_entry("23:00", AlarmRepeat::Daily, today.clone());
         let alarm = spotify.schedule_alarm(entry).unwrap();
-        assert_eq!(alarm.format("%Y-%m-%d %H:%M:%S").to_string(), "2017-06-21 23:00:00");
+        assert_eq!(spotify.alarm_time(alarm).unwrap().format("%Y-%m-%d %H:%M:%S").to_string(), "2017-06-21 23:00:00");
 
         // Daily, the next day
         let entry = build_alarm_entry("00:00", AlarmRepeat::Daily, today.clone());
         let alarm = spotify.schedule_alarm(entry).unwrap();
-        assert_eq!(alarm.format("%Y-%m-%d %H:%M:%S").to_string(), "2017-06-22 00:00:00");
+        assert_eq!(spotify.alarm_time(alarm).unwrap().format("%Y-%m-%d %H:%M:%S").to_string(), "2017-06-22 00:00:00");
 
         // Weekends, 3 days later
         let entry = build_alarm_entry("08:00", AlarmRepeat::Weekends, today.clone());
         let alarm = spotify.schedule_alarm(entry).unwrap();
-        assert_eq!(alarm.format("%Y-%m-%d %H:%M:%S").to_string(), "2017-06-24 08:00:00");
+        assert_eq!(spotify.alarm_time(alarm).unwrap().format("%Y-%m-%d %H:%M:%S").to_string(), "2017-06-24 08:00:00");
 
         // Weekdays, the next day
         let entry = build_alarm_entry("08:00", AlarmRepeat::Weekdays, today.clone());
         let alarm = spotify.schedule_alarm(entry).unwrap();
-        assert_eq!(alarm.format("%Y-%m-%d %H:%M:%S").to_string(), "2017-06-22 08:00:00");
+        assert_eq!(spotify.alarm_time(alarm).unwrap().format("%Y-%m-%d %H:%M:%S").to_string(), "2017-06-22 08:00:00");
+        // Disable/re-enable and verify it responds correctly
+        assert_eq!(spotify.alarm_enabled(alarm), true);
+        assert!(spotify.alarm_disable(alarm).is_ok());
+        assert_eq!(spotify.alarm_enabled(alarm), false);
+        assert!(spotify.alarm_time(alarm).is_err());
+        assert!(spotify.alarm_reschedule(alarm).is_ok());
+        assert_eq!(spotify.alarm_time(alarm).unwrap().format("%Y-%m-%d %H:%M:%S").to_string(), "2017-06-22 08:00:00");
     }
 }

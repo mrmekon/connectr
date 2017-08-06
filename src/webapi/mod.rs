@@ -5,12 +5,15 @@ extern crate time;
 extern crate timer;
 
 extern crate chrono;
-use self::chrono::{DateTime, Local, UTC, TimeZone, Datelike, Timelike, Weekday};
+use self::chrono::{DateTime, Local, Datelike, Timelike, Weekday};
 
 use std::fmt;
 use std::iter;
+use std::iter::Iterator;
 use std::collections::BTreeMap;
 use std::sync::mpsc::{channel, Receiver};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::str::FromStr;
 
 extern crate serde_json;
 use self::serde_json::Value;
@@ -272,11 +275,34 @@ impl QueryString {
     }
 }
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Debug)]
 pub enum AlarmRepeat {
     Daily,
     Weekdays,
     Weekends,
+}
+impl Default for AlarmRepeat {
+    fn default() -> Self { AlarmRepeat::Daily }
+}
+impl fmt::Display for AlarmRepeat {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let s = match self {
+            &AlarmRepeat::Daily => "daily",
+            &AlarmRepeat::Weekdays => "weekdays",
+            &AlarmRepeat::Weekends => "weekends",
+        };
+        write!(f, "{}", s)
+    }
+}
+impl FromStr for AlarmRepeat {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "weekdays" => Ok(AlarmRepeat::Weekdays),
+            "weekends" => Ok(AlarmRepeat::Weekends),
+            _ => Ok(AlarmRepeat::Daily),
+        }
+    }
 }
 
 pub struct AlarmEntry {
@@ -286,6 +312,40 @@ pub struct AlarmEntry {
     pub device: DeviceId,
     #[cfg(test)]
     pub now: Option<DateTime<Local>>,
+}
+
+#[derive(Default, Debug)]
+pub struct AlarmConfig {
+    pub hour: u32,
+    pub minute: u32,
+    pub context: String,
+    pub repeat: AlarmRepeat,
+    pub device: String,
+}
+impl FromStr for AlarmConfig {
+    type Err = String;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut fields = s.split(",");
+        let time = fields.next().ok_or("Missing time")?;
+        let repeat = fields.next().ok_or("Missing repeat")?;
+        let context = fields.next().ok_or("Missing context")?;
+        let device = fields.next().ok_or("Missing device")?;
+        let mut time_fields = time.split(":");
+        let hour = time_fields.next().ok_or("Missing hour")?;
+        let minute = time_fields.next().ok_or("Missing minute")?;
+        Ok(AlarmConfig {
+            hour: hour.parse().unwrap(),
+            minute: minute.parse().unwrap(),
+            context: context.to_owned(),
+            repeat: AlarmRepeat::from_str(repeat).unwrap(),
+            device: device.to_owned(),
+        })
+    }
+}
+impl fmt::Display for AlarmConfig {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:02}:{:02},{},{},{}", self.hour, self.minute, self.repeat, self.context, self.device)
+    }
 }
 
 pub enum SpotifyRepeat {
@@ -314,11 +374,16 @@ struct DeviceIdList {
     play: bool,
 }
 
+pub type AlarmId = usize;
 struct AlarmTimer {
     entry: AlarmEntry,
+    #[allow(dead_code)]
     timer: timer::Timer,
-    guard: timer::Guard,
-    channel: Receiver<()>,
+    #[allow(dead_code)]
+    guard: Option<timer::Guard>,
+    channel: Option<Receiver<()>>,
+    time: Option<DateTime<Local>>,
+    id: usize,
 }
 
 pub struct SpotifyConnectr<'a> {
@@ -335,6 +400,7 @@ pub struct SpotifyConnectr<'a> {
     refresh_timer_channel: Option<Receiver<()>>,
 
     alarms: Vec<AlarmTimer>,
+    next_alarm_id: AtomicUsize,
 }
 impl<'a> Default for SpotifyConnectr<'a> {
     fn default() -> Self {
@@ -349,6 +415,8 @@ impl<'a> Default for SpotifyConnectr<'a> {
             refresh_timer: timer::Timer::new(),
             refresh_timer_guard: Default::default(),
             refresh_timer_channel: Default::default(),
+            alarms: Vec::new(),
+            next_alarm_id: AtomicUsize::new(0),
         }
     }
 }
@@ -382,6 +450,7 @@ impl<'a> SpotifyConnectrBuilder<'a> {
                               refresh_timer_guard: None,
                               refresh_timer_channel: None,
                               alarms: Vec::new(),
+                              next_alarm_id: AtomicUsize::new(0),
         })
     }
     #[cfg(test)]
@@ -423,24 +492,25 @@ impl<'a> SpotifyConnectr<'a> {
             _ => 0,
         }
     }
-    fn alarm_current_time(&self, entry: &AlarmEntry) -> DateTime<Local> {
+    fn alarm_current_time(_entry: &AlarmEntry) -> DateTime<Local> {
         // Allow unit tests to override 'now', so days can be deterministic
         #[cfg(test)]
-        return match entry.now {
+        return match _entry.now {
             Some(dt) => dt.clone(),
             None => Local::now(),
         };
+        #[cfg(not(test))]
         Local::now()
     }
-    fn next_alarm_datetime(&self, entry: &AlarmEntry) -> Result<DateTime<Local>, String> {
-        let now = self.alarm_current_time(&entry);
-        let format_12h = "%I:%M %p";
+    fn next_alarm_datetime(entry: &AlarmEntry) -> Result<DateTime<Local>, String> {
+        let now = Self::alarm_current_time(&entry);
+        //let format_12h = "%I:%M %p";
         let format_24h = "%H:%M";
         let alarm_time = match time::strptime(&entry.time, format_24h) {
             Ok(t) => t,
             _ => return Err("Could not parse alarm clock time.".to_string()),
         };
-        let mut alarm = self.alarm_current_time(&entry)
+        let mut alarm = Self::alarm_current_time(&entry)
             .with_hour(alarm_time.tm_hour as u32).ok_or("Invalid hour")?
             .with_minute(alarm_time.tm_min as u32).ok_or("Invalid minute")?
             .with_second(0).ok_or("Invalid second")?
@@ -464,21 +534,73 @@ impl<'a> SpotifyConnectr<'a> {
         }
         Ok(alarm)
     }
-    pub fn schedule_alarm(&mut self, entry: AlarmEntry) -> Result<DateTime<Local>, ()> {
-        let alarm = self.next_alarm_datetime(&entry).unwrap();
+    fn alarm_with_id(&mut self, id: AlarmId) -> Result<&mut AlarmTimer, ()> {
+        let mut result = self.alarms
+            .iter_mut()
+            .filter(|x| {x.id == id})
+            .collect::<Vec<&mut AlarmTimer>>();
+        match result.pop() {
+            Some(alarm) => Ok(alarm),
+            _ => Err(()),
+        }
+    }
+    pub fn alarm_time(&mut self, id: AlarmId) -> Result<DateTime<Local>, ()> {
+        let alarm = self.alarm_with_id(id)?;
+        match alarm.time {
+            Some(time) => Ok(time),
+            _ => Err(()),
+        }
+    }
+    pub fn alarm_disable(&mut self, id: AlarmId) -> Result<(), ()> {
+        let alarm = self.alarm_with_id(id)?;
+        alarm.guard = None;
+        alarm.channel = None;
+        alarm.time = None;
+        Ok(())
+    }
+    pub fn alarm_enabled(&mut self, id: AlarmId) -> bool {
+        let alarm = self.alarm_with_id(id);
+        match alarm {
+            Ok(alarm) => alarm.guard.is_some(),
+            _ => false,
+        }
+    }
+    pub fn alarm_reschedule(&mut self, id: AlarmId) -> Result<(), ()> {
+        let mut alarm = { self.alarm_with_id(id)? };
+        let alarm_time = Self::next_alarm_datetime(&alarm.entry).unwrap();
         let (tx, rx) = channel::<>();
-        let timer = timer::Timer::new();
+
         let closure = move || { tx.send(()).unwrap(); };
-        let guard = timer.schedule_with_date(alarm, closure);
-        let duration = alarm.signed_duration_since(Local::now());
-        info!("Alarm set for {} hours from now", duration.num_hours());
+        let guard = alarm.timer.schedule_with_date(alarm_time, closure);
+        let duration = alarm_time.signed_duration_since(Local::now());
+        info!("Alarm set for {} hours from now ({} mins)", duration.num_hours(), duration.num_minutes());
+
+        alarm.channel = Some(rx);
+        alarm.guard = Some(guard);
+        alarm.time = Some(alarm_time);
+        Ok(())
+    }
+    pub fn alarm_configure(&mut self) {
+        let alarm_config = settings::request_web_alarm_config();
+        if settings::save_web_alarm_config(alarm_config).is_ok() {
+            if let Some(settings) = settings::read_settings(self.api.scopes_version) {
+                self.settings = settings;
+            };
+        }
+    }
+    pub fn schedule_alarm(&mut self, entry: AlarmEntry) -> Result<AlarmId, ()> {
+        let timer = timer::Timer::new();
+        let id = self.next_alarm_id.fetch_add(1, Ordering::SeqCst);
         self.alarms.push(AlarmTimer {
             entry: entry,
             timer: timer,
-            guard: guard,
-            channel: rx,
+            guard: None,
+            channel: None,
+            time: None,
+            id: id,
         });
-        Ok(alarm)
+        self.alarm_reschedule(id)?;
+        Ok(id as AlarmId)
     }
     fn schedule_token_refresh(&mut self) -> Result<(), ()> {
         match self.expire_utc {
@@ -533,14 +655,19 @@ impl<'a> SpotifyConnectr<'a> {
 
         // Get list of which alarms have expired
         let expired = self.alarms.iter().enumerate()
-            .map(|(idx, alarm)| alarm.channel.try_recv().is_ok()).collect::<Vec<_>>();
+            .map(|(_idx, alarm)| {
+                match alarm.channel {
+                    Some(ref rx) => rx.try_recv().is_ok(),
+                    _ => false,
+                }
+            }).collect::<Vec<_>>();
         // For each expired alarm, remove it, execute it, and reschedule it
         for (idx, exp) in expired.iter().enumerate() {
             if *exp {
                 let old_alarm = self.alarms.swap_remove(idx);
                 self.set_target_device(Some(old_alarm.entry.device.clone()));
                 self.play(Some(&old_alarm.entry.context));
-                self.schedule_alarm(old_alarm.entry);
+                let _ = self.schedule_alarm(old_alarm.entry);
             }
         }
 
