@@ -297,7 +297,7 @@ impl fmt::Display for AlarmRepeat {
 impl FromStr for AlarmRepeat {
     type Err = String;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s {
+        match s.trim() {
             "weekdays" => Ok(AlarmRepeat::Weekdays),
             "weekends" => Ok(AlarmRepeat::Weekends),
             _ => Ok(AlarmRepeat::Daily),
@@ -334,11 +334,12 @@ impl FromStr for AlarmConfig {
         let hour = time_fields.next().ok_or("Missing hour")?;
         let minute = time_fields.next().ok_or("Missing minute")?;
         Ok(AlarmConfig {
-            hour: hour.parse().unwrap(),
-            minute: minute.parse().unwrap(),
-            context: context.to_owned(),
-            repeat: AlarmRepeat::from_str(repeat).unwrap(),
-            device: device.to_owned(),
+            hour: hour.trim().parse().unwrap_or(0),
+            minute: minute.trim().parse().unwrap_or(0),
+            context: context.trim().to_owned(),
+            repeat: AlarmRepeat::from_str(repeat)
+                .unwrap_or(AlarmRepeat::Daily),
+            device: device.trim().to_owned(),
         })
     }
 }
