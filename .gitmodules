@@ -3,4 +3,4 @@
 	url = https://github.com/mrmekon/systray-rs
 [submodule "deps/timer.rs"]
 	path = deps/timer.rs
-	url = https://github.com:mrmekon/timer.rs
+	url = https://github.com/mrmekon/timer.rs
