@@ -3,6 +3,7 @@ use self::ini::Ini;
 use super::http;
 use super::AlarmRepeat;
 use super::AlarmConfig;
+use super::ConnectDeviceList;
 
 extern crate time;
 extern crate fruitbasket;
@@ -14,7 +15,7 @@ use std::collections::BTreeMap;
 
 const INIFILE: &'static str = "connectr.ini";
 const PORT: u32 = 5432;
-const WEB_PORT: u32 = 5676;
+pub const WEB_PORT: u32 = 5676;
 
 #[derive(Default)]
 pub struct Settings {
@@ -81,7 +82,7 @@ To create your free developer application for Connectr, follow these instruction
 <p><ul>
 <li> Go to your <a href="https://developer.spotify.com/my-applications/#!/applications/create">Spotify Applications</a> page (login with your Spotify credentials)
 <li> Click "CREATE AN APP" in the upper-right corner
-<li> Enter a name (perhaps "Connectr") and description ("Use Connectr app with my account.")
+<li> Enter a name (perhaps 'Connectr') and description ("Use Connectr app with my account.")
 <li> Add a Redirect URI: <em>http://127.0.0.1:{}</em>
 <li> Copy your <em>Client ID</em> and <em>Client Secret</em> to the fields below.
 <li> Press the <em>SAVE</em> button at the bottom of Spotify's webpage
@@ -130,29 +131,77 @@ If something goes wrong or changes, edit or delete that file.</small>
     config
 }
 
-pub fn request_web_alarm_config() -> BTreeMap<String,String> {
-    let form = format!(r###"
+pub fn request_web_alarm_config(alarms: &Vec<AlarmConfig>,
+                                devices: Option<&ConnectDeviceList>) -> BTreeMap<String,String> {
+    let mut form = format!(
+        r###"
 {}
 <!DOCTYPE HTML>
-<html><head><title>Connectr Alarm Clocks</title><style> tr:nth-child(even) {{ background: #f2f2f2; }} </style></head>
-<body><h2>Connectr Alarm Clocks</h2> Input in 24-hour time format:
+<html><head><title>Connectr Alarm Clocks</title><style>
+tr:nth-child(even) {{ background: #f2f2f2; }}
+th {{ width:120px;border-bottom: 1px solid #ddd; }}
+a.tooltip {{ position: relative; }}
+a.tooltip::before {{ content: attr(data-tip); position:absolute; z-index: 999;
+white-space:normal; bottom:9999px; left: 50%; background:#000; color:#e0e0e0;
+padding:2px 7px 2px 7px; line-height: 16px; opacity: 0; width: inherit; max-width: 500px;
+transition:opacity 0.4s ease-out; font-weight: normal; text-align: left; min-width: 100px; }}
+a.tooltip:hover::before {{ opacity: 1; bottom:-35px; }}
+a.tooltip {{ color: #4e4e4e; text-decoration: none; vertical-align: super; font-size: 11px; font-weight: normal; }}
+</style>
+<meta http-equiv="cache-control" content="no-cache" /><meta http-equiv="expires" content="0"></head>
+<body><h2>Connectr Alarm Clocks</h2>
+    <div style="background-color: #9e9e9e; padding: 10px 10px 10px 10px;"><strong>IMPORTANT:</strong> Do NOT close this window without saving or cancelling.  Connectr is paused internally until this is dismissed!</div><br/>
+    <h3>Connected Devices: <a href="#" style="width: 300px;" class="tooltip" data-tip="These are the devices that are currently logged in and online.  You can specify any device for your alarm, but be sure it is on and logged in at the right time.  Make sure your device doesn't become unavailable when idle.">eh?</a></h3>
+    <table><tr><th style="width:300px;">Name</th><th>Device ID</th></tr>
+"###,
+        "HTTP/1.1 200 OK\r\nCache-Control: no-cache, no-store, must-revalidate, max-age=0\r\n\r\n");
+    if let Some(devices) = devices {
+        for dev in devices {
+            form.push_str(&format!(
+                r###"
+      <tr><td>{}</td><td>{}</td></tr>
+"###, dev.name, dev.id.as_ref().unwrap_or(&"unknown".to_string())));
+        }
+    }
+    form.push_str(&format!(
+    r###"
+    </table><br/>
+    <h3>Alarm Schedule:</h3>
 <form method="POST" action="#" accept-charset="UTF-8"><table>
-<tr><th style="width:100px; border-bottom: 1px solid #ddd;" align="center">Time</th><th align="center" style="width:100px;border-bottom: 1px solid #ddd;">Repeat</th></tr>
+<tr><th align="center">Time <a href="#" class="tooltip" data-tip="24-hour format">eh?</a></th><th align="center">Repeat</th><th>Spotify URI <a href="#" class="tooltip" data-tip="In Spotify app: right-click playlist, click 'Share', click 'URI'">eh?</a></th><th>Device ID <a href="#" class="tooltip" data-tip="Unique identifier of Spotify hardware.  Devices are listed above.">eh?</a></th></tr>
+"###));
+    for i in 0..5 {
+        form.push_str(&format!(
+            r###"
+<tr><td align="center"><input style="width:40px;" type="number" name="hour_{}" min="0" max="23" size="3" maxlength="2" value="{}">:<input style="width:40px;" type="number" name="minute_{}" min="0" max="59" size="3" maxlength="2" value="{}"></td><td align="center"><select name="repeat_{}"><option value="daily" {}>Daily</option><option value="weekdays" {}>Weekdays</option><option value="weekends" {}>Weekends</option></select></td><td><input type="text" name="context_{}" style="width:350px;" value="{}"></td><td><input type="text" name="device_{}" size="42" value="{}"></td></tr>
+"###,
+            i,
+            alarms.get(i).map_or(0, |a| {a.hour}).to_string(),
+            i,
+            alarms.get(i).map_or(0, |a| {a.minute}).to_string(),
+            i,
+            match alarms.get(i).map_or(false, |a| {a.repeat == AlarmRepeat::Daily   }) {
+                true => "selected", _ => "" },
+            match alarms.get(i).map_or(false, |a| {a.repeat == AlarmRepeat::Weekdays}) {
+                true => "selected", _ => ""},
+            match alarms.get(i).map_or(false, |a| {a.repeat == AlarmRepeat::Weekends}) {
+                true => "selected", _ => ""},
+            i,
+            alarms.get(i).map_or("", |a| {&a.context}),
+            i,
+            alarms.get(i).map_or("", |a| {&a.device}),
+        ));
+    }
 
-<tr><td align="center"><input style="width:40px;" type="number" name="hour_0" min="0" max="23" size="3" maxlength="2">:<input style="width:40px;" type="number" name="minute_0" min="0" max="59" size="3" maxlength="2"></td><td align="center"><select name="repeat_0"><option value="daily">Daily</option><option value="weekdays">Weekdays</option><option value="weekends">Weekends</option></select></td></tr>
-
-<tr><td align="center"><input style="width:40px;" type="number" name="hour_1" min="0" max="23" size="3" maxlength="2">:<input style="width:40px;" type="number" name="minute_1" min="0" max="59" size="3" maxlength="2"></td><td align="center"><select name="repeat_1"><option value="daily">Daily</option><option value="weekdays">Weekdays</option><option value="weekends">Weekends</option></select></td></tr>
-
-<tr><td align="center"><input style="width:40px;" type="number" name="hour_2" min="0" max="23" size="3" maxlength="2">:<input style="width:40px;" type="number" name="minute_2" min="0" max="59" size="3" maxlength="2"></td><td align="center"><select name="repeat_2"><option value="daily">Daily</option><option value="weekdays">Weekdays</option><option value="weekends">Weekends</option></select></td></tr>
-
-<tr><td align="center"><input style="width:40px;" type="number" name="hour_3" min="0" max="23" size="3" maxlength="2">:<input style="width:40px;" type="number" name="minute_3" min="0" max="59" size="3" maxlength="2"></td><td align="center"><select name="repeat_3"><option value="daily">Daily</option><option value="weekdays">Weekdays</option><option value="weekends">Weekends</option></select></td></tr>
-
-<tr><td align="center"><input style="width:40px;" type="number" name="hour_4" min="0" max="23" size="3" maxlength="2">:<input style="width:40px;" type="number" name="minute_4" min="0" max="59" size="3" maxlength="2"></td><td align="center"><select name="repeat_4"><option value="daily">Daily</option><option value="weekdays">Weekdays</option><option value="weekends">Weekends</option></select></td></tr>
-
-<tr><td colspan=2><center><input type="submit" value="Save Configuration" style="height:50px; width: 300px; font-size:20px;"></center></td></tr></br>
+    form.push_str(&format!(
+        r###"
+<tr><td colspan="4"><br/><center><input type="submit" name="cancel" value="Cancel" style="height:50px; width: 300px; font-size:20px;"> &nbsp; <input type="submit" name="submit" value="Save Configuration" style="height:50px; width: 300px; font-size:20px;"></center></td></tr></br>
 </table></form>
+<br/><small>You can manually change or add more alarms by editing: <em>{}</em></br></br>
+It is wise to have a backup alarm, in case your internet or Spotify is down.</small>
 </body></html>
-"###, "HTTP/1.1 200 OK\r\n\r\n");
+"###, inifile()));
+
     let reply = format!("{}Configuration saved.  You can close this window.",
                         "HTTP/1.1 200 OK\r\n\r\n");
     let mut config = BTreeMap::<String,String>::new();
@@ -204,8 +253,11 @@ pub fn save_web_alarm_config(config: BTreeMap<String,String>) -> Result<(), Sett
     for pair in config.iter() {
         let key = pair.0;
         let value = pair.1;
+        if key == "cancel" {
+            return Err("Canceled by user.".to_string());
+        }
         // are you kidding me??
-        let idx = key.chars().rev().take(1).collect::<Vec<char>>()[0].to_digit(10).unwrap() as usize;
+        let idx = key.chars().rev().take(1).collect::<Vec<char>>()[0].to_digit(10).unwrap_or(0) as usize;
         let entry = entries.get_mut(idx).unwrap();
         match key.split("_").next().unwrap() {
             "hour" => {
@@ -225,11 +277,14 @@ pub fn save_web_alarm_config(config: BTreeMap<String,String>) -> Result<(), Sett
                     _ => AlarmRepeat::Daily,
                 };
             },
+            "context" => {
+                entry.context = value.clone();
+            },
+            "device" => {
+                entry.device = value.clone();
+            },
             _ => {},
         }
-    }
-    for i in 0..5 {
-        info!("Entry {}: {:?}", i, entries.get(i).unwrap());
     }
     for (idx,entry) in entries.iter().enumerate() {
         conf.set_to(Some("alarms"), format!("alarm{}", idx+1), entry.to_string());

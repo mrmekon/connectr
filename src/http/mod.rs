@@ -291,6 +291,8 @@ pub fn config_request_local_webserver(port: u32, form: String, reply: String) ->
         return config;
     }
     // Run web server for an hour.
+    // In a proper world, this would be an async 'future'.  The whole Spotify
+    // thread is blocked until the user saves.
     let timeout = Duration::from_secs(60*60);
     match rx.recv_timeout(timeout) {
         Ok(_) => {
