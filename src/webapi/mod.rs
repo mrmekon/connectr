@@ -275,7 +275,7 @@ impl QueryString {
     }
 }
 
-#[derive(PartialEq, Debug)]
+#[derive(PartialEq, Debug, Clone, Copy)]
 pub enum AlarmRepeat {
     Daily,
     Weekdays,
@@ -314,7 +314,21 @@ pub struct AlarmEntry {
     pub now: Option<DateTime<Local>>,
 }
 
-#[derive(Default, Debug)]
+impl<'a> From<&'a AlarmConfig> for AlarmEntry {
+    fn from(alarm: &AlarmConfig) -> Self {
+        AlarmEntry {
+            time: format!("{:02}:{:02}", alarm.hour, alarm.minute),
+            repeat: alarm.repeat,
+            context: PlayContext::new()
+                .context_uri(&alarm.context)
+                .offset_position(0)
+                .build(),
+            device: alarm.device.clone(),
+        }
+    }
+}
+
+#[derive(Default, Debug, Clone)]
 pub struct AlarmConfig {
     pub hour: u32,
     pub minute: u32,
@@ -440,19 +454,25 @@ impl<'a> SpotifyConnectrBuilder<'a> {
             self.access = settings.access_token.clone();
             self.refresh = settings.refresh_token.clone();
         }
-        Some(SpotifyConnectr {api: self.api,
-                              settings: settings,
-                              auth_code: String::new(),
-                              access_token: self.access.clone(),
-                              refresh_token: self.refresh.clone(),
-                              expire_utc: self.expire,
-                              device: None,
-                              refresh_timer: timer::Timer::new(),
-                              refresh_timer_guard: None,
-                              refresh_timer_channel: None,
-                              alarms: Vec::new(),
-                              next_alarm_id: AtomicUsize::new(0),
-        })
+        let mut cnr = SpotifyConnectr {
+            api: self.api,
+            settings: settings,
+            auth_code: String::new(),
+            access_token: self.access.clone(),
+            refresh_token: self.refresh.clone(),
+            expire_utc: self.expire,
+            device: None,
+            refresh_timer: timer::Timer::new(),
+            refresh_timer_guard: None,
+            refresh_timer_channel: None,
+            alarms: Vec::new(),
+            next_alarm_id: AtomicUsize::new(0),
+        };
+        let alarms: Vec<AlarmConfig> = cnr.settings.alarms.clone();
+        for alarm in &alarms {
+            let _ = cnr.schedule_alarm(alarm.into());
+        }
+        Some(cnr)
     }
     #[cfg(test)]
     fn with_api(&mut self, api: SpotifyEndpoints<'a>) -> &mut Self {
@@ -574,17 +594,28 @@ impl<'a> SpotifyConnectr<'a> {
         let closure = move || { tx.send(()).unwrap(); };
         let guard = alarm.timer.schedule_with_date(alarm_time, closure);
         let duration = alarm_time.signed_duration_since(Local::now());
-        info!("Alarm set for {} hours from now ({} mins)", duration.num_hours(), duration.num_minutes());
+        info!("Alarm {} set for {} hours from now ({} mins)", alarm.entry.time,
+              duration.num_hours(), duration.num_minutes());
 
         alarm.channel = Some(rx);
         alarm.guard = Some(guard);
         alarm.time = Some(alarm_time);
         Ok(())
     }
-    pub fn alarm_configure(&mut self) {
-        let alarm_config = settings::request_web_alarm_config();
+    pub fn alarm_configure(&mut self, devices: Option<&ConnectDeviceList>) {
+        let alarm_config = settings::request_web_alarm_config(&self.settings.alarms, devices);
         if settings::save_web_alarm_config(alarm_config).is_ok() {
             if let Some(settings) = settings::read_settings(self.api.scopes_version) {
+                let ids: Vec<AlarmId> = self.alarms.iter().map(|x| {x.id}).collect();
+                for id in ids {
+                    let _ = self.alarm_disable(id);
+                }
+                self.alarms.clear();
+                for alarm in &settings.alarms {
+                    // TODO: clear all existing alarms?  or return these as a list?
+                    // save them in self and add an accessor?
+                    let _ = self.schedule_alarm(alarm.into());
+                }
                 self.settings = settings;
             };
         }
@@ -666,9 +697,14 @@ impl<'a> SpotifyConnectr<'a> {
         for (idx, exp) in expired.iter().enumerate() {
             if *exp {
                 let old_alarm = self.alarms.swap_remove(idx);
+                info!("Alarm started: {} on {}",
+                      old_alarm.entry.context.context_uri.as_ref().unwrap(),
+                      old_alarm.entry.device);
                 self.set_target_device(Some(old_alarm.entry.device.clone()));
                 self.play(Some(&old_alarm.entry.context));
-                let _ = self.schedule_alarm(old_alarm.entry);
+                let id = old_alarm.id;
+                self.alarms.push(old_alarm);
+                let _ = self.alarm_reschedule(id);
             }
         }
 

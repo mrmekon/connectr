@@ -51,6 +51,8 @@ pub const REFRESH_PERIOD: i64 = 30;
 enum SpotifyThreadCommand {
     Update,
     InvalidSettings,
+    ConfigActive,
+    ConfigInactive,
 }
 
 #[allow(dead_code)]
@@ -439,7 +441,23 @@ fn reconfig_menu<T: TStatusBar>(status: &mut T) {
 fn fill_menu<T: TStatusBar>(app: &mut ConnectrApp,
                             spotify: &SpotifyThread,
                             status: &mut T,
-                            touchbar: &mut TouchbarUI) {
+                            touchbar: &mut TouchbarUI,
+                            web_config_active: bool) {
+    if web_config_active {
+        // This is a leaky-abstraction way of handling the webapi thread being
+        // blocked, and thus unable to respond to a second 'Edit Alarms' request.
+        // That's problematic if you close the browser window, since you'll have
+        // to wait an hour for it to time out... so block all actions until it
+        // is answered.
+        let cb: NSCallback = Box::new(move |_sender, _tx| {
+            let _ = open::that(format!("http://127.0.0.1:{}", connectr::settings::WEB_PORT));
+        });
+        let _ = status.add_item("Edit Alarms (relaunch)", cb, false);
+        status.add_separator();
+        status.add_quit("Exit");
+        return;
+    }
+
     let device_list = spotify.device_list.read().unwrap();
     let player_state = spotify.player_state.read().unwrap();
     let presets = spotify.presets.read().unwrap();
@@ -822,17 +840,6 @@ fn create_spotify_thread(rx_cmd: Receiver<String>) -> SpotifyThread {
             *preset_writer = spotify.get_presets().clone();
             let _ = tx.send(SpotifyThreadCommand::Update);
         }
-        let alarm = spotify.schedule_alarm(connectr::AlarmEntry {
-            time: "19:46".to_string(),
-            repeat: connectr::AlarmRepeat::Daily,
-            context: connectr::PlayContext::new()
-                .context_uri("spotify:user:mrmekon:playlist:2NZx9rQlpDTEhjrbCIwh0Q")
-                .offset_position(0)
-                .build(),
-            device: "adf47bd71923ad681f33e3a778c56fc33f4a63a8".to_string(),
-        }).unwrap();
-        let _ = spotify.alarm_disable(alarm);
-        let _ = spotify.alarm_reschedule(alarm);
         loop {
             if rx.try_recv().is_ok() {
                 // Main thread tells us to shutdown
@@ -847,7 +854,10 @@ fn create_spotify_thread(rx_cmd: Receiver<String>) -> SpotifyThread {
                 info!("Received {}", s);
                 let cmd: MenuCallbackCommand = serde_json::from_str(&s).unwrap();
                 if cmd.action == CallbackAction::EditAlarms {
-                    spotify.alarm_configure();
+                    let devs = device_list.read().unwrap();
+                    let _ = tx.send(SpotifyThreadCommand::ConfigActive);
+                    spotify.alarm_configure((*devs).as_ref());
+                    let _ = tx.send(SpotifyThreadCommand::ConfigInactive);
                 }
                 let refresh_strategy =  handle_callback(player_state.read().unwrap().as_ref(),
                                                         &mut spotify, &cmd);
@@ -978,6 +988,7 @@ fn main() {
         warn!("Didn't find Wine in search path.");
     }
 
+    let mut web_config_active: bool = false;
     let mut need_redraw: bool = false;
     while running.load(Ordering::SeqCst) {
         match spotify_thread.rx.recv_timeout(Duration::from_millis(100)) {
@@ -988,13 +999,21 @@ fn main() {
                         clear_menu(&mut app, &mut status);
                         reconfig_menu(&mut status);
                     }
+                    SpotifyThreadCommand::ConfigActive => {
+                        web_config_active = true;
+                        need_redraw = true;
+                    },
+                    SpotifyThreadCommand::ConfigInactive => {
+                        web_config_active = false;
+                        need_redraw = true;
+                    },
                 }
             },
             Err(_) => {}
         }
         if need_redraw && status.can_redraw() {
             clear_menu(&mut app, &mut status);
-            fill_menu(&mut app, &spotify_thread, &mut status, &mut touchbar);
+            fill_menu(&mut app, &spotify_thread, &mut status, &mut touchbar, web_config_active);
             need_redraw = false;
         }
         status.run(false);
