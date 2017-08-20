@@ -612,8 +612,6 @@ impl<'a> SpotifyConnectr<'a> {
                 }
                 self.alarms.clear();
                 for alarm in &settings.alarms {
-                    // TODO: clear all existing alarms?  or return these as a list?
-                    // save them in self and add an accessor?
                     let _ = self.schedule_alarm(alarm.into());
                 }
                 self.settings = settings;
