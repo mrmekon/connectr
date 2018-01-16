@@ -286,6 +286,9 @@ pub fn save_web_alarm_config(config: BTreeMap<String,String>) -> Result<(), Sett
             _ => {},
         }
     }
+    let entries = entries.iter().filter(|e| {
+        !e.context.is_empty() && !e.device.is_empty()
+    }).collect::<Vec<&AlarmConfig>>();
     for (idx,entry) in entries.iter().enumerate() {
         conf.set_to(Some("alarms"), format!("alarm{}", idx+1), entry.to_string());
     }

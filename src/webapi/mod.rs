@@ -345,6 +345,9 @@ impl FromStr for AlarmConfig {
         let repeat = fields.next().ok_or("Missing repeat")?;
         let context = fields.next().ok_or("Missing context")?;
         let device = fields.next().ok_or("Missing device")?;
+        if device.is_empty() || context.is_empty() || time.is_empty() {
+            return Err("Invalid alarm.".into());
+        }
         let mut time_fields = time.split(":");
         let hour = time_fields.next().ok_or("Missing hour")?;
         let minute = time_fields.next().ok_or("Missing minute")?;
