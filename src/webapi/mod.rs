@@ -38,10 +38,11 @@ pub fn parse_spotify_token(json: &str) -> (String, String, u64) {
         let expires_in = json_data["expires_in"].as_u64().unwrap_or(0 as u64);
         return (String::from(access_token),String::from(refresh_token), expires_in);
     }
-    (String::new(), String::new(), 0)
+    // Default to blank, expiring in 5s to trigger a retry.
+    (String::new(), String::new(), 5000)
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Default)]
 pub struct ConnectDevice {
     pub id: Option<String>,
     pub is_active: bool,
@@ -119,7 +120,7 @@ pub struct ConnectContext {
     pub uri: String,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Debug, Default)]
 pub struct PlayerState {
     pub timestamp: i64,
     pub device: ConnectDevice,
@@ -587,11 +588,13 @@ impl<'a> SpotifyConnectr<'a> {
         }
     }
     pub fn alarm_reschedule(&mut self, id: AlarmId) -> Result<(), ()> {
-        let mut alarm = { self.alarm_with_id(id)? };
+        let alarm = { self.alarm_with_id(id)? };
         let alarm_time = Self::next_alarm_datetime(&alarm.entry).unwrap();
         let (tx, rx) = channel::<>();
 
-        let closure = move || { tx.send(()).unwrap(); };
+        let closure = move || {
+            tx.send(()).unwrap_or_else(|_| { warn!("Alarm clock skipped."); });
+        };
         let guard = alarm.timer.schedule_with_date(alarm_time, closure);
         let duration = alarm_time.signed_duration_since(Local::now());
         info!("Alarm {} set for {} hours from now ({} mins)", alarm.entry.time,
@@ -645,7 +648,9 @@ impl<'a> SpotifyConnectr<'a> {
                 };
                 let expire_offset = chrono::Duration::seconds(expire_offset);
                 info!("Refreshing Spotify credentials in {} sec", expire_offset.num_seconds());
-                let closure = move || { tx.send(()).unwrap(); };
+                let closure = move || {
+                    tx.send(()).unwrap_or_else(|_| { warn!("Token refresh lost."); });
+                };
                 self.refresh_timer_guard = Some(self.refresh_timer.schedule_with_delay(expire_offset, closure));
                 Ok(())
             }
@@ -700,6 +705,7 @@ impl<'a> SpotifyConnectr<'a> {
                       old_alarm.entry.device);
                 self.set_target_device(Some(old_alarm.entry.device.clone()));
                 self.play(Some(&old_alarm.entry.context));
+                self.set_target_device(None);
                 let id = old_alarm.id;
                 self.alarms.push(old_alarm);
                 let _ = self.alarm_reschedule(id);
@@ -728,16 +734,22 @@ impl<'a> SpotifyConnectr<'a> {
         let _ = self.schedule_token_refresh();
     }
     pub fn request_oauth_tokens(&self, auth_code: &str, settings: &settings::Settings) -> (String, String, u64) {
-    let query = QueryString::new()
-        .add("grant_type", "authorization_code")
-        .add("code", auth_code)
-        .add("redirect_uri", format!("http://127.0.0.1:{}", settings.port))
-        .add("client_id", settings.client_id.clone())
-        .add("client_secret", settings.secret.clone())
-        .build();
+        let query = QueryString::new()
+            .add("grant_type", "authorization_code")
+            .add("code", auth_code)
+            .add("redirect_uri", format!("http://127.0.0.1:{}", settings.port))
+            .add("client_id", settings.client_id.clone())
+            .add("client_secret", settings.secret.clone())
+            .build();
         let json_response = http::http(self.api.token, Some(&query), None, http::HttpMethod::POST,
-                                       http::AccessToken::None).unwrap();
-        parse_spotify_token(&json_response)
+                                       http::AccessToken::None);
+        match json_response.code {
+            Some(200) => {
+                parse_spotify_token(&json_response.unwrap())
+            },
+            // Default to blank, expiring in 5s to trigger a retry.
+            _ => { (String::new(), String::new(), 5000) }
+        }
     }
     pub fn connect(&mut self) {
         if self.access_token.is_some() {
@@ -797,12 +809,16 @@ impl<'a> SpotifyConnectr<'a> {
                 Ok(json) => json,
                 Err(err) => { info!("json error: {}", err); None },
             },
+            Some(202) => {
+                warn!("Spotify returned no state.");
+                Default::default()
+            }
             Some(401) => {
                 warn!("Access token invalid.  Attempting to reauthenticate.");
                 self.refresh_access_token();
-                None
+                Default::default()
             }
-            _ => None
+            _ => Default::default()
         }
     }
     pub fn set_target_device(&mut self, device: Option<DeviceId>) {
@@ -857,14 +873,11 @@ impl<'a> SpotifyConnectr<'a> {
         http::http(self.api.repeat, Some(&query), None, http::HttpMethod::PUT, self.bearer_token())
     }
     pub fn transfer_multi(&mut self, devices: Vec<String>, play: bool) -> SpotifyResponse {
-        let device = devices[0].clone();
         let body = serde_json::to_string(&DeviceIdList {device_ids: devices, play: play}).unwrap();
-        self.set_target_device(Some(device));
         http::http(self.api.player, None, Some(&body), http::HttpMethod::PUT, self.bearer_token())
     }
     pub fn transfer(&mut self, device: String, play: bool) -> SpotifyResponse {
         let body = serde_json::to_string(&DeviceIdList {device_ids: vec![device.clone()], play: play}).unwrap();
-        self.set_target_device(Some(device));
         http::http(self.api.player, None, Some(&body), http::HttpMethod::PUT, self.bearer_token())
     }
     pub fn save_track(&mut self, track: String, playlist: String) -> SpotifyResponse {
