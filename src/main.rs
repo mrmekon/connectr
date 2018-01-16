@@ -126,13 +126,19 @@ impl TScrubberData for TouchbarScrubberData {
         self.entries.borrow().len() as u32
     }
     fn text(&self, _item: rubrail::ItemId, idx: u32) -> String {
-        self.entries.borrow()[idx as usize].0.to_string()
+        match self.entries.borrow().get(idx as usize) {
+            Some(e) => e.0.to_string(),
+            None => String::new(),
+        }
     }
     fn width(&self, _item: rubrail::ItemId, idx: u32) -> u32 {
         // 10px per character + some padding seems to work nicely for the default
         // font.  no idea what it's like on other machines.  does the touchbar
         // font change? ¯\_(ツ)_/¯
-        let len = self.entries.borrow()[idx as usize].0.len() as u32;
+        let len = match self.entries.borrow().get(idx as usize) {
+            Some(e) => e.0.len() as u32,
+            None => 1,
+        };
         let width = len * 8 + 20;
         width
     }
@@ -463,7 +469,9 @@ fn fill_menu<T: TStatusBar>(app: &mut ConnectrApp,
     let presets = spotify.presets.read().unwrap();
     if device_list.is_none() ||
         player_state.is_none() {
-            // TODO: handle empty groups
+            status.add_label("No devices found.");
+            status.add_separator();
+            status.add_quit("Exit");
             return;
         }
     let device_list = device_list.as_ref().unwrap();
@@ -1050,4 +1058,8 @@ fn play_uri(spotify: &mut connectr::SpotifyConnectr, device: Option<&str>, uri: 
             require(spotify.play(None));
         }
     };
+
+    // Always set it back to None, so commands go to the currently
+    // playing device.
+    spotify.set_target_device(None);
 }

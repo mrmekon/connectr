@@ -58,19 +58,21 @@ systray = {path = "deps/systray-rs", version="0.1.1-connectr"}
 
 [target."cfg(windows)".dependencies.rubrail]
 default-features=false
-version = "0.5"
+version = "0.6"
 
 [target."cfg(all(unix, not(target_os = \"macos\")))".dependencies]
 
 [target."cfg(all(unix, not(target_os = \"macos\")))".dependencies.rubrail]
 default-features = false
-version = "0.5"
+version = "0.6"
 
 [target."cfg(target_os = \"macos\")".dependencies]
 cocoa = "0.9"
 objc-foundation = "0.1.1"
 objc_id = "0.1"
-rubrail = "0.5"
+
+[target."cfg(target_os = \"macos\")".dependencies.rubrail]
+version = "0.6"
 
 [target."cfg(target_os = \"macos\")".dependencies.objc]
 version = "0.2.2"

@@ -21,7 +21,7 @@ use self::url::percent_encoding;
 
 use super::settings;
 
-#[derive(PartialEq)]
+#[derive(PartialEq, Debug)]
 pub enum HttpMethod {
     GET,
     POST,
@@ -63,6 +63,7 @@ impl fmt::Display for HttpResponse {
     }
 }
 
+#[derive(Debug)]
 pub enum AccessToken<'a> {
     Bearer(&'a str),
     Basic(&'a str),
@@ -72,6 +73,8 @@ pub enum AccessToken<'a> {
 pub fn http(url: &str, query: Option<&str>, body: Option<&str>,
             method: HttpMethod, access_token: AccessToken) -> HttpResponse {
     let mut headers = List::new();
+    #[cfg(feature = "verbose_http")]
+    info!("HTTP URL: {:?} {}\nQuery: {:?}\nBody: {:?}\nToken: {:?}", method, url, query, body, access_token);
     let data = match method {
         HttpMethod::POST => {
             match query {

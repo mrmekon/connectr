@@ -132,7 +132,7 @@ impl INSObject for ObjcSubclass {
                     let rustdata: &mut RustWrapperClass = &mut *(ptr as *mut RustWrapperClass);
                     if let Some(ref cb) = rustdata.cb_fn {
                         // Ownership?  Fuck ownership!
-                        let mut rustdata: &mut RustWrapperClass = &mut *(ptr as *mut RustWrapperClass);
+                        let rustdata: &mut RustWrapperClass = &mut *(ptr as *mut RustWrapperClass);
                         cb(rustdata, sender);
                     }
                 }
@@ -143,7 +143,7 @@ impl INSObject for ObjcSubclass {
             extern fn objc_get_rust_data(this: &Object, _cmd: Sel) -> u64 {
                 unsafe {*this.get_ivar("_rustdata")}
             }
-            
+
             unsafe {
                 let f: extern fn(&mut Object, Sel, u64) = objc_cb;
                 decl.add_method(sel!(cb:), f);
