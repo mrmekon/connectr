@@ -325,6 +325,8 @@ impl<'a> From<&'a AlarmConfig> for AlarmEntry {
                 .offset_position(0)
                 .build(),
             device: alarm.device.clone(),
+            #[cfg(test)]
+            now: None,
         }
     }
 }
