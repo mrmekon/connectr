@@ -50,6 +50,25 @@ mod tests {
         add_to_playlist: "http://127.0.0.1:9799/v1/users",
     };
 
+    pub const BAD_TEST_API: SpotifyEndpoints = SpotifyEndpoints {
+        scopes: "user-read-private streaming user-read-playback-state",
+        scopes_version: 1,
+        authorize: "http://127.0.0.1:11111/en/authorize",
+        token: "http://127.0.0.1:11111/api/token",
+        devices: "http://127.0.0.1:11111/v1/me/player/devices",
+        player_state: "http://127.0.0.1:11111/v1/me/player",
+        play: "http://127.0.0.1:11111/v1/me/player/play",
+        pause: "http://127.0.0.1:11111/v1/me/player/pause",
+        next: "http://127.0.0.1:11111/v1/me/player/next",
+        previous: "http://127.0.0.1:11111/v1/me/player/previous",
+        seek: "http://127.0.0.1:11111/v1/me/player/seek",
+        volume: "http://127.0.0.1:11111/v1/me/player/volume",
+        shuffle: "http://127.0.0.1:11111/v1/me/player/shuffle",
+        repeat: "http://127.0.0.1:11111/v1/me/player/repeat",
+        player: "http://127.0.0.1:11111/v1/me/player",
+        add_to_playlist: "http://127.0.0.1:11111/v1/users",
+    };
+
     /// Macro to parse the body of a POST request and send a response.
     ///
     /// There's probably a "body.to_string()" function somewhere.  I didn't find it.
@@ -101,9 +120,6 @@ mod tests {
     }
 
     fn init() {
-        while !WEBSERVER_STARTED.load(Ordering::Relaxed) {
-            sleep(Duration::from_millis(100));
-        }
         START.call_once(|| {
             #[derive(Clone, Copy)]
             struct Webapi;
@@ -123,20 +139,23 @@ mod tests {
             thread::spawn(move || {
                 let addr = "127.0.0.1:9799".parse().unwrap();
                 let server = Http::new().bind(&addr, || Ok(Webapi)).unwrap();
-                server.run().unwrap();
                 WEBSERVER_STARTED.store(true, Ordering::Relaxed);
+                server.run().unwrap();
             });
             // Give it some time to really come up.  It would be nicer to
             // actually try to connect to it.
             sleep(Duration::from_millis(500));
         });
+        while !WEBSERVER_STARTED.load(Ordering::Relaxed) {
+            sleep(Duration::from_millis(100));
+        }
     }
 
     #[test]
     fn test_refresh_oauth_tokens_no_connection() {
         let now = time::now_utc().to_timespec().sec as u64;
         let spotify = SpotifyConnectr::new()
-            .with_api(TEST_API)
+            .with_api(BAD_TEST_API)
             .with_oauth_tokens("access", "refresh", now + 3600)
             .build()
             .unwrap();
@@ -192,8 +211,10 @@ mod tests {
 
     #[test]
     fn test_alarm_scheduler() {
+        let now = time::now_utc().to_timespec().sec as u64;
         let mut spotify = SpotifyConnectr::new()
             .with_api(TEST_API)
+            .with_oauth_tokens("access", "refresh", now + 3600)
             .build()
             .unwrap();
 
