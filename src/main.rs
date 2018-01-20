@@ -458,7 +458,7 @@ fn fill_menu<T: TStatusBar>(app: &mut ConnectrApp,
         let cb: NSCallback = Box::new(move |_sender, _tx| {
             let _ = open::that(format!("http://127.0.0.1:{}", connectr::settings::WEB_PORT));
         });
-        let _ = status.add_item("Edit Alarms (relaunch)", cb, false);
+        let _ = status.add_item("Re-launch Config", cb, false);
         status.add_separator();
         status.add_quit("Exit");
         return;
@@ -663,6 +663,16 @@ fn fill_menu<T: TStatusBar>(app: &mut ConnectrApp,
     });
     let _ = status.add_item("Edit Alarms", cb, false);
 
+    let cb: NSCallback = Box::new(move |sender, tx| {
+        let cmd = MenuCallbackCommand {
+            action: CallbackAction::Reconfigure,
+            sender: sender,
+            data: String::new(),
+        };
+        let _ = tx.send(serde_json::to_string(&cmd).unwrap());
+    });
+    let _ = status.add_item("Reconfigure Connectr", cb, false);
+
     status.add_separator();
     let cb: NSCallback = Box::new(move |_sender, _tx| {
         let _ = open::that("https://open.spotify.com/search/");
@@ -789,6 +799,130 @@ fn find_wine_path() -> Option<std::path::PathBuf> {
     None
 }
 
+fn scrobble(spotify: &mut connectr::SpotifyConnectr,
+            state: Option<&connectr::PlayerState>,
+            played_ms: u32,
+            done: bool) {
+    if let Some(state) = flatten_player_state(state) {
+        let len = state.duration_ms;
+        let artist = state.artist.clone();
+        let track = state.track.clone();
+        let album = state.album.clone();
+        let devtype = state.device_type.clone();
+        if done {
+            // Scrobbling API rules:
+            //  - Track longer than 30 seconds
+            //  - Track played at least half its duration OR 4 minutes
+            if len > 30000 &&
+                (played_ms > 4*60000 || played_ms >= len / 2)
+            {
+                spotify.scrobble(artist, track, album, devtype);
+            }
+        }
+        else {
+            spotify.scrobbler_now_playing(artist, track, album, devtype);
+        }
+    }
+}
+
+struct FlatPlayState {
+    #[allow(dead_code)]
+    artist: String,
+    #[allow(dead_code)]
+    track: String,
+    #[allow(dead_code)]
+    album: String,
+    device_type: String,
+    uri: String,
+    progress_ms: u32,
+    duration_ms: u32,
+    is_playing: bool,
+}
+
+fn flatten_player_state(state: Option<&connectr::PlayerState>) -> Option<FlatPlayState> {
+    match state {
+        Some(state) => {
+            match state.item {
+                Some(ref item) => {
+                    let artist = match item.artists.get(0) {
+                        Some(ref a) => a.name.clone(),
+                        None => String::new(),
+                    };
+                    Some(FlatPlayState {
+                        artist: artist,
+                        track: item.name.clone(),
+                        album: item.album.name.clone(),
+                        device_type: state.device.device_type.clone(),
+                        uri: item.uri.clone(),
+                        progress_ms: state.progress_ms.unwrap_or(0),
+                        duration_ms: item.duration_ms,
+                        is_playing: state.is_playing,
+                    })
+                },
+                None => None,
+            }
+        },
+        None => None,
+    }
+}
+
+#[derive(Debug)]
+enum StateChange {
+    Stopped(u32),
+    Changed(u32),
+    Played(u32),
+    Unchanged,
+}
+
+fn compare_playback_states(old: Option<&connectr::PlayerState>,
+                           new: Option<&connectr::PlayerState>) -> StateChange {
+    let old_track = flatten_player_state(old);
+    let new_track = flatten_player_state(new);
+    if old_track.is_none() && new_track.is_none() {
+        return StateChange::Unchanged;
+    }
+    if old_track.is_some() && new_track.is_none() {
+        return StateChange::Stopped(0);
+    }
+    if old_track.is_none() && new_track.is_some() {
+        match new_track.unwrap().is_playing {
+            true => { return StateChange::Changed(0); },
+            false => { return StateChange::Stopped(0); },
+        }
+    }
+    let old_track = old_track.unwrap();
+    let new_track = new_track.unwrap();
+    let new_time = new_track.progress_ms;
+    let old_time = old_track.progress_ms;
+    if old_track.uri != new_track.uri {
+        // Assume that up to 31 seconds of the previous track played.
+        let played = std::cmp::min(
+            std::cmp::max(old_track.duration_ms as i64 - old_time as i64, 0),
+            31000) as u32;
+        if old_track.is_playing && !new_track.is_playing {
+            // End of context
+            return StateChange::Stopped(played);
+        }
+        return StateChange::Changed(played);
+    }
+    let played = std::cmp::max(new_time as i64 - old_time as i64, 0) as u32;
+    if (new_time == 0 && !new_track.is_playing) && (old_time > 0 && old_track.is_playing) {
+        // Playlist finished and reset.  Normally caught above, but this
+        // is a special case for a 1-track playlist.
+        let played = std::cmp::min(
+            std::cmp::max(old_track.duration_ms as i64 - old_time as i64, 0),
+            31000) as u32;
+        return StateChange::Stopped(played);
+    }
+    if played == 0 {
+        return StateChange::Unchanged;
+    }
+    if !old_track.is_playing {
+        return StateChange::Changed(played);
+    }
+    StateChange::Played(played)
+}
+
 struct SpotifyThread {
     #[allow(dead_code)]
     handle: std::thread::JoinHandle<()>,
@@ -814,6 +948,7 @@ fn create_spotify_thread(rx_cmd: Receiver<String>) -> SpotifyThread {
         let rx = rx_in;
         let rx_cmd = rx_cmd;
         let mut refresh_time_utc = 0;
+        let mut track_play_time_ms: u32 = 0;
 
         // Continuously try to create a connection to Spotify web API.
         // If it fails, assume that the settings file is corrupt and inform
@@ -829,7 +964,7 @@ fn create_spotify_thread(rx_cmd: Receiver<String>) -> SpotifyThread {
                     if let Ok(s) = rx_cmd.recv_timeout(Duration::from_secs(120)) {
                         let cmd: MenuCallbackCommand = serde_json::from_str(&s).unwrap();
                         if cmd.action == CallbackAction::Reconfigure {
-                            connectr::reconfigure();
+                            connectr::reconfigure(None);
                         }
                     }
                 },
@@ -867,6 +1002,14 @@ fn create_spotify_thread(rx_cmd: Receiver<String>) -> SpotifyThread {
                     spotify.alarm_configure((*devs).as_ref());
                     let _ = tx.send(SpotifyThreadCommand::ConfigInactive);
                 }
+                if cmd.action == CallbackAction::Reconfigure {
+                    info!("Reconfiguring settings.");
+                    let _ = tx.send(SpotifyThreadCommand::ConfigActive);
+                    connectr::reconfigure(Some(spotify.settings()));
+                    spotify.reread_settings();
+                    let _ = tx.send(SpotifyThreadCommand::ConfigInactive);
+                    info!("Finished reconfiguring.");
+                }
                 let refresh_strategy =  handle_callback(player_state.read().unwrap().as_ref(),
                                                         &mut spotify, &cmd);
                 refresh_time_utc = match refresh_strategy {
@@ -897,6 +1040,25 @@ fn create_spotify_thread(rx_cmd: Receiver<String>) -> SpotifyThread {
                 let play_state = spotify.request_player_state();
                 {
                     let mut player_writer = player_state.write().unwrap();
+                    let cmp = compare_playback_states(player_writer.as_ref(), play_state.as_ref());
+                    info!("State change: {:?}", cmp);
+                    match cmp {
+                        StateChange::Changed(time_ms) => {
+                            track_play_time_ms += time_ms;
+                            scrobble(&mut spotify, player_writer.as_ref(), track_play_time_ms, true);
+                            track_play_time_ms = 0;
+                            scrobble(&mut spotify, play_state.as_ref(), track_play_time_ms, false);
+                        }
+                        StateChange::Stopped(time_ms) => {
+                            track_play_time_ms += time_ms;
+                            scrobble(&mut spotify, player_writer.as_ref(), track_play_time_ms, true);
+                            track_play_time_ms = 0;
+                        },
+                        StateChange::Played(time_ms) => {
+                            track_play_time_ms += time_ms;
+                        },
+                        StateChange::Unchanged => {},
+                    }
                     *player_writer = play_state;
                 }
                 refresh_time_utc = refresh_time(player_state.read().unwrap().as_ref(), now);

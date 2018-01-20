@@ -4,6 +4,7 @@ use super::http;
 use super::AlarmRepeat;
 use super::AlarmConfig;
 use super::ConnectDeviceList;
+use super::Scrobbler;
 
 extern crate time;
 extern crate fruitbasket;
@@ -18,6 +19,16 @@ const PORT: u32 = 5432;
 pub const WEB_PORT: u32 = 5676;
 
 #[derive(Default)]
+pub struct LastfmSettings {
+    pub key: String,
+    pub secret: String,
+    pub session_key: String,
+    pub username: String,
+    pub ignore_pc: bool,
+    pub ignore_phone: bool,
+}
+
+#[derive(Default)]
 pub struct Settings {
     pub port: u32,
     pub secret: String,
@@ -29,6 +40,8 @@ pub struct Settings {
     pub default_quicksave: Option<String>,
     pub quicksave: BTreeMap<String, String>,
     pub alarms: Vec<AlarmConfig>,
+    pub lastfm_enabled: bool,
+    pub lastfm: Option<LastfmSettings>,
 }
 
 impl Settings {
@@ -67,11 +80,12 @@ fn inifile() -> String {
     String::new()
 }
 
-pub fn request_web_config() -> BTreeMap<String,String> {
-    let form = format!(r###"
+pub fn request_web_config(settings: Option<&Settings>) -> BTreeMap<String,String> {
+    let mut form = format!(r###"
 {}
 <!DOCTYPE HTML>
 <html>
+<meta http-equiv="cache-control" content="no-cache" /><meta http-equiv="expires" content="0"></head>
 <head><title>Connectr Installation</title></head>
 <body>
 <h2>Connectr Installation</h2>
@@ -90,8 +104,19 @@ To create your free developer application for Connectr, follow these instruction
 </ul></p>
 <form method="POST" action="#" accept-charset="UTF-8"><table>
 <tr><td colspan=2><h3>Spotify Credentials (all fields required):</h3></td></tr>
-<tr><td>Client ID:</td><td><input type="text" name="client_id" style="width:400px;"></td></tr>
-<tr><td>Client Secret:</td><td><input type="text" name="secret" style="width:400px;"></td></tr>
+"###,
+                           "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nCache-Control: no-cache, no-store, must-revalidate, max-age=0\r\n\r\n",
+                           PORT);
+    let client_id = settings.map_or("", |s| &s.client_id);
+    let secret = settings.map_or("", |s| &s.secret);
+    form.push_str(&format!(r###"
+<tr><td>Client ID:</td><td><input type="text" name="client_id" value="{}" style="width:400px;"></td></tr>
+<tr><td>Client Secret:</td><td><input type="text" name="secret" value="{}" style="width:400px;"></td></tr>
+"###,
+                           client_id, // client id
+                           secret // secret
+                           ));
+    form.push_str(&format!(r###"
 <tr><td colspan=2></br></br></tr></tr>
 <tr><td colspan=2><h3>Presets (all fields optional):</h3>
     <div style="width:600px;">
@@ -108,11 +133,102 @@ To create your free developer application for Connectr, follow these instruction
     &nbsp;&nbsp;&nbsp;<code>[Preset Name] = [Context URI],[Quick-save Playlist URI]</code>
     </br></br>
 </td></tr>
-<tr><td>Presets:</br>(one per line)</td><td><textarea rows="10" cols="100"  name="presets" placeholder="First Preset Name = spotify:user:spotify:playlist:37i9dQZEVXboyJ0IJdpcuT"></textarea></td></tr>
-<tr><td style="width:150px;">Quick-Save URI:</br>(playlist URI)</td><td>
-    <input type="text" name="quicksave_default" style="width:400px;"></td></tr>
+"###));
+    let presets = match settings {
+        Some(ref settings) => {
+            let mut p = String::new();
+            for &(ref name, ref uri) in &settings.presets {
+                let qsave = match settings.quicksave.get(uri) {
+                    Some(ref q) => format!(",{}", q),
+                    None => String::new(),
+                };
+                p.push_str(&format!("{} = {}{}", name, uri, qsave));
+            }
+            p
+        },
+        None => String::new(),
+    };
+    let quicksave = match settings {
+        Some(ref s) => match s.default_quicksave {
+            Some(ref d) => &d,
+            None => "",
+        },
+        None => "",
+    };
+    form.push_str(&format!(r###"
+<tr><td>Presets:</br>(one per line)</td><td><textarea rows="10" cols="100"  name="presets" placeholder="First Preset Name = spotify:user:spotify:playlist:37i9dQZEVXboyJ0IJdpcuT">{}</textarea></td></tr>
+<tr><td style="width:200px;">Quick-Save URI:</br>(playlist URI)</td><td>
+    <input type="text" name="quicksave_default" value="{}" style="width:400px;"></td></tr>
+"###,
+                           presets, // Preset list
+                           quicksave, // quicksave default
+    ));
+
+    form.push_str(&format!(r###"
 <tr><td colspan=2></br></br></tr></tr>
-<tr><td colspan=2><center><input type="submit" value="Save Configuration" style="height:50px; width: 300px; font-size:20px;"></center></td></tr>
+<tr><td colspan=2><h3>Last.fm Scrobbling (optional):</h3>
+    <div style="width:600px;">
+    Enable Scrobbling to <a href="https://last.fm">Last.fm</a>.  If enabled, Connectr will scrobble any tracks that it sees playing on your Spotify account.  Note that Connectr must be running and online to scrobble, so this feature is most useful when Connectr is hosted on an always-on server like a home media machine or a VPS.</br></br>
+    This whole section is optional, but all fields are required if any of them are specified.</br></br>
+    Scrobbling requires a Last.fm account (free) and a developer API key (also free).  After you have signed up, you can <a href="https://www.last.fm/api/account/create">request an API key here</a>.</br></br>
+    Spotify's desktop and mobile clients have Last.fm scrobbling built in, while Spotify Connect devices like speakers and TVs do not.  Below you can set whether you want Connectr to ignore (not scrobble) certain classes of devices.  This is especially handy for mobile devices, which can scrobble tracks that were played offline.</br></br>
+    </div>
+"###));
+
+    let enabled = match settings {
+        None => false,
+        Some(settings) => match settings.lastfm {
+            None => false,
+            Some(_) => match settings.lastfm_enabled {
+                false => false,
+                true => true,
+            }
+        }
+    };
+    let mut key = String::new();
+    let mut secret = String::new();
+    let mut username = String::new();
+    let mut password = String::new();
+    let mut ignore_pc: &str = "";
+    let mut ignore_phone: &str = "";
+    if let Some(settings) = settings {
+        if let Some(ref lastfm) = settings.lastfm {
+            key = lastfm.key.clone();
+            secret = lastfm.secret.clone();
+            username = lastfm.username.clone();
+            password = "<UNCHANGED>".to_string();
+            ignore_pc = match lastfm.ignore_pc {
+                false => "",
+                true => "checked",
+            };
+            ignore_phone = match lastfm.ignore_phone {
+                false => "",
+                true => "checked",
+            };
+        }
+    }
+    let enabled = match enabled {
+        true => "checked",
+        false => "",
+    };
+    form.push_str(&format!(r###"
+<tr><td>Scrobbling enabled:</td><td><input type="checkbox" name="lastfm_enabled" {}></input></td></tr>
+<tr><td style="width: 200px;">Last.fm API key:</td><td><input type="text" name="lastfm_key" value="{}" style="width:400px;"></td></tr>
+<tr><td>Last.fm API Secret:</td><td><input type="text" name="lastfm_secret" value="{}" style="width:400px;"></td></tr>
+<tr><td>Last.fm username:</td><td><input type="text" name="lastfm_username" value="{}" style="width:400px;"></td></tr>
+<tr><td>Last.fm password:</td><td><input type="password" name="lastfm_password" value="{}" style="width:400px;"></td></tr>
+<tr><td>Ignore device types:</td>
+<td>
+<input type="checkbox" name="lastfm_ignore_pc" {}> Computers</input></br>
+<input type="checkbox" name="lastfm_ignore_phone" {}> Smartphones</input></br>
+</td>
+</tr>
+"###,
+    enabled, key, secret, username, password, ignore_pc, ignore_phone));
+
+    form.push_str(&format!(r###"
+<tr><td colspan=2></br></br></tr></tr>
+<tr><td colspan=2><center><input type="submit" name="cancel" value="Cancel" style="height:50px; width: 300px; font-size:20px;"> &nbsp; <input type="submit" value="Save Configuration" style="height:50px; width: 300px; font-size:20px;"></center></td></tr>
 </br>
 </table></form>
 </br>
@@ -120,11 +236,9 @@ To create your free developer application for Connectr, follow these instruction
 If something goes wrong or changes, edit or delete that file.</small>
 </body></html>
 "###,
-                       "HTTP/1.1 200 OK\r\n\r\n",
-                       PORT,
-                       default_inifile());
+                           default_inifile()));
     let reply = format!("{}Configuration saved.  You can close this window.",
-                        "HTTP/1.1 200 OK\r\n\r\n");
+                        "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n\r\n");
     let mut config = BTreeMap::<String,String>::new();
     config.insert("port".to_string(), PORT.to_string());
     config.append(&mut http::config_request_local_webserver(WEB_PORT, form, reply));
@@ -154,7 +268,7 @@ a.tooltip {{ color: #4e4e4e; text-decoration: none; vertical-align: super; font-
     <h3>Connected Devices: <a href="#" style="width: 300px;" class="tooltip" data-tip="These are the devices that are currently logged in and online.  You can specify any device for your alarm, but be sure it is on and logged in at the right time.  Make sure your device doesn't become unavailable when idle.">eh?</a></h3>
     <table><tr><th style="width:300px;">Name</th><th>Device ID</th></tr>
 "###,
-        "HTTP/1.1 200 OK\r\nCache-Control: no-cache, no-store, must-revalidate, max-age=0\r\n\r\n");
+        "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nCache-Control: no-cache, no-store, must-revalidate, max-age=0\r\n\r\n");
     if let Some(devices) = devices {
         for dev in devices {
             form.push_str(&format!(
@@ -203,14 +317,20 @@ It is wise to have a backup alarm, in case your internet or Spotify is down.</sm
 "###, inifile()));
 
     let reply = format!("{}Configuration saved.  You can close this window.",
-                        "HTTP/1.1 200 OK\r\n\r\n");
+                        "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\n\r\n");
     let mut config = BTreeMap::<String,String>::new();
     config.append(&mut http::config_request_local_webserver(WEB_PORT, form, reply));
     config
 }
 
-pub fn save_web_config(mut config: BTreeMap<String,String>) -> Ini {
-    let mut c = Ini::new();
+pub fn save_web_config(old_settings: Option<&Settings>, mut config: BTreeMap<String,String>) -> Ini {
+    let mut c = match old_settings {
+        Some(_) => Ini::load_from_file(&inifile()).unwrap_or(Ini::new()),
+        None => Ini::new(),
+    };
+    if config.contains_key("cancel") {
+        return c;
+    }
     let port = config.remove("port").unwrap();
     c.with_section(Some("connectr".to_owned()))
         .set("port", port);
@@ -235,6 +355,49 @@ pub fn save_web_config(mut config: BTreeMap<String,String>) -> Ini {
             }
         }
     }
+    let lastfm_enabled = match config.remove("lastfm_enabled") {
+        Some(_) => true,
+        None => false,
+    };
+    let key = config.remove("lastfm_key").unwrap_or("".to_string());
+    let secret = config.remove("lastfm_secret").unwrap_or("".to_string());
+    let username = config.remove("lastfm_username").unwrap_or("".to_string());
+    let password = config.remove("lastfm_password").unwrap_or("".to_string());
+    let session_key = match password.as_str() {
+        "<UNCHANGED>" => match old_settings {
+            Some(ref settings) => match settings.lastfm {
+                Some(ref fm) => fm.session_key.clone(),
+                None => String::new(),
+            },
+            None => String::new(),
+        },
+        _ => String::new(),
+    };
+    let ignore_pc = config.remove("lastfm_ignore_pc").unwrap_or("".to_string()) != "";
+    let ignore_phone = config.remove("lastfm_ignore_phone").unwrap_or("".to_string()) != "";
+    // Use existing session key if it exists, otherwise calculate a new one from
+    // the password.
+    let session_key = match session_key.len() {
+        0 => {
+            let mut scrob = Scrobbler::new(key.to_owned(), secret.to_owned());
+            match scrob.authenticate_with_password(username.to_owned(), password.to_owned()) {
+                Ok(_) => match scrob.session_key() {
+                    Some(key) => key,
+                    None => String::new(),
+                },
+                Err(_) => String::new(),
+            }
+        },
+        _ => session_key,
+    };
+    c.with_section(Some("lastfm".to_owned()))
+        .set("enabled", lastfm_enabled.to_string())
+        .set("key", key.trim())
+        .set("secret", secret.trim())
+        .set("session_key", session_key)
+        .set("username", username.trim())
+        .set("ignore_pc", ignore_pc.to_string())
+        .set("ignore_phone", ignore_phone.to_string());
     c.write_to_file(&default_inifile()).unwrap();
     c
 }
@@ -306,8 +469,8 @@ pub fn read_settings(scopes_version: u32) -> Option<Settings> {
             info!("Requesting settings via web form.");
             // Launch a local web server and open a browser to it.  Returns
             // the Spotify configuration.
-            let web_config = request_web_config();
-            save_web_config(web_config)
+            let web_config = request_web_config(None);
+            save_web_config(None, web_config)
         }
     };
 
@@ -374,12 +537,35 @@ pub fn read_settings(scopes_version: u32) -> Option<Settings> {
         }
     }
 
+    let mut lastfm: Option<LastfmSettings> = None;
+    let mut lastfm_enabled = false;
+    if let Some(section) = conf.section(Some("lastfm".to_owned())) {
+        let enabled = section.get("enabled").unwrap_or(&"false".to_string()).clone();
+        let key = section.get("key").unwrap_or(&"".to_string()).clone();
+        let secret = section.get("secret").unwrap_or(&"".to_string()).clone();
+        let session_key = section.get("session_key").unwrap_or(&"".to_string()).clone();
+        let username = section.get("username").unwrap_or(&"".to_string()).clone();
+        let ignore_pc = section.get("ignore_pc").unwrap_or(&"false".to_string()).clone();
+        let ignore_phone = section.get("ignore_phone").unwrap_or(&"false".to_string()).clone();
+        lastfm_enabled = enabled == "true";
+        lastfm = Some(LastfmSettings {
+            key: key,
+            secret: secret,
+            session_key: session_key,
+            username: username,
+            ignore_pc: ignore_pc == "true",
+            ignore_phone: ignore_phone == "true",
+        });
+    }
+
     Some(Settings { secret: secret.to_string(), client_id: client_id.to_string(), port: port,
                     access_token: access, refresh_token: refresh, expire_utc: expire_utc,
                     presets: presets,
                     default_quicksave: quicksave_default,
                     quicksave: quicksave,
                     alarms: alarms,
+                    lastfm_enabled: lastfm_enabled,
+                    lastfm: lastfm,
     })
 }
 

@@ -18,6 +18,8 @@ use std::str::FromStr;
 extern crate serde_json;
 use self::serde_json::Value;
 
+use super::{Scrobbler, Scrobble};
+
 use super::http;
 use super::settings;
 use super::SpotifyEndpoints;
@@ -422,6 +424,8 @@ pub struct SpotifyConnectr<'a> {
 
     alarms: Vec<AlarmTimer>,
     next_alarm_id: AtomicUsize,
+
+    scrobbler: Option<Scrobbler>,
 }
 impl<'a> Default for SpotifyConnectr<'a> {
     fn default() -> Self {
@@ -438,6 +442,7 @@ impl<'a> Default for SpotifyConnectr<'a> {
             refresh_timer_channel: Default::default(),
             alarms: Vec::new(),
             next_alarm_id: AtomicUsize::new(0),
+            scrobbler: None,
         }
     }
 }
@@ -473,11 +478,13 @@ impl<'a> SpotifyConnectrBuilder<'a> {
             refresh_timer_channel: None,
             alarms: Vec::new(),
             next_alarm_id: AtomicUsize::new(0),
+            scrobbler: None,
         };
         let alarms: Vec<AlarmConfig> = cnr.settings.alarms.clone();
         for alarm in &alarms {
             let _ = cnr.schedule_alarm(alarm.into());
         }
+        cnr.scrobbler_authenticate();
         Some(cnr)
     }
     #[cfg(test)]
@@ -503,6 +510,26 @@ impl<'a> SpotifyConnectr<'a> {
             refresh: None,
             expire: None,
         }
+    }
+    fn scrobbler_authenticate(&mut self) {
+        let scrobbler = match self.settings.lastfm_enabled {
+            false => None,
+            true => match self.settings.lastfm {
+                None => None,
+                Some(ref fm) => {
+                    let mut scrob = Scrobbler::new(fm.key.to_owned(), fm.secret.to_owned());
+                    scrob.authenticate_with_session_key(fm.session_key.to_owned());
+                    Some(scrob)
+                }
+            }
+        };
+        self.scrobbler = scrobbler;
+    }
+    pub fn reread_settings(&mut self) {
+        if let Some(settings) = settings::read_settings(self.api.scopes_version) {
+            self.settings = settings;
+        }
+        self.scrobbler_authenticate();
     }
     pub fn quick_save_playlist(&self, context: &str) -> Option<&str> {
         self.settings.quick_save_playlist(context)
@@ -897,5 +924,44 @@ impl<'a> SpotifyConnectr<'a> {
     }
     pub fn get_presets(&mut self) -> &Vec<(String,String)> {
         &self.settings.presets
+    }
+    fn device_can_scrobble(&self, device_type: &str) -> bool {
+        if let Some(ref fm) = self.settings.lastfm {
+            let dev = device_type.to_lowercase();
+            if fm.ignore_pc && dev == "computer" {
+                return false;
+            }
+            if fm.ignore_phone && ["smartphone".to_string(),"tablet".to_string()].contains(&dev) {
+                return false;
+            }
+        }
+        true
+    }
+    pub fn scrobbler_now_playing(&mut self, artist: String, track: String,
+                                 album: String, device_type: String) {
+        if self.device_can_scrobble(&device_type) {
+            if let Some(ref scrobbler) = self.scrobbler {
+                let s = Scrobble::new(artist, track.clone(), album);
+                match scrobbler.now_playing(s) {
+                    Ok(_) => { info!("Scrobbler now playing: {}", track); },
+                    Err(e) => {error!("Scrobbler update failed: {}", e)},
+                }
+            }
+        }
+    }
+    pub fn scrobble(&mut self, artist: String, track: String,
+                    album: String, device_type: String) {
+        if self.device_can_scrobble(&device_type) {
+            if let Some(ref scrobbler) = self.scrobbler {
+                let s = Scrobble::new(artist, track.clone(), album);
+                match scrobbler.scrobble(s) {
+                    Ok(_) => { info!("Scrobbled: {}", track); },
+                    Err(e) => {error!("Scrobbler update failed: {}", e)},
+                }
+            }
+        }
+    }
+    pub fn settings(&self) -> &settings::Settings {
+        &self.settings
     }
 }

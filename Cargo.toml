@@ -30,6 +30,8 @@ panic = 'unwind'
 [features]
 verbose_http = []
 mac_white_icon = []
+scrobble = ["rustfm-scrobble"]
+default = ["scrobble"]
 
 [dependencies]
 curl = "0.4.6"
@@ -46,6 +48,7 @@ chrono = "0.4"
 log = "0.3.7"
 log4rs = "0.6.3"
 ctrlc = "3.0.1"
+rustfm-scrobble = {version="0.9.1", optional = true}
 
 [dependencies.fruitbasket]
 version = "0.5"
