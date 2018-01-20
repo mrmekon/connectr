@@ -115,9 +115,36 @@ impl TStatusBar for DummyStatusBar {
     fn run(&mut self, _: bool) {}
 }
 
-pub fn reconfigure() {
-    let web_config = settings::request_web_config();
-    let _ = settings::save_web_config(web_config);
+#[cfg(feature = "scrobble")]
+extern crate rustfm_scrobble;
+#[cfg(feature = "scrobble")]
+use self::rustfm_scrobble::{Scrobbler, Scrobble};
+#[cfg(not(feature = "scrobble"))]
+type Scrobbler = DummyScrobbler;
+#[cfg(not(feature = "scrobble"))]
+type Scrobble = DummyScrobble;
+
+pub struct DummyScrobbler {}
+impl DummyScrobbler {
+    pub fn new(_api: String, _key: String) -> DummyScrobbler {
+        DummyScrobbler {}
+    }
+    pub fn authenticate_with_password(&self, _a: String, _b: String) -> Result<(), String> { Ok(()) }
+    pub fn authenticate_with_session_key(&self, _a: String) {}
+    pub fn session_key(&self) -> Option<String> { None }
+    pub fn now_playing(&self, _a: DummyScrobble) -> Result<(), String> { Ok(())}
+    pub fn scrobble(&self, _a: DummyScrobble) -> Result<(), String>{ Ok(()) }
+}
+pub struct DummyScrobble {}
+impl DummyScrobble {
+    pub fn new(_a: String, _b: String, _c: String) -> DummyScrobble {
+        DummyScrobble {}
+    }
+}
+
+pub fn reconfigure(settings: Option<&settings::Settings>) {
+    let web_config = settings::request_web_config(settings);
+    let _ = settings::save_web_config(settings, web_config);
 }
 
 pub fn search_paths() -> Vec<String> {
