@@ -490,7 +490,7 @@ fn fill_menu<T: TStatusBar>(app: &mut ConnectrApp,
         _ => "unknown".to_string()
     };
 
-    println!("Playback State:\n{}", player_state);
+    info!("Playback State:\n{}", player_state);
     let play_str = format!("{}\n{}\n{}", track, artist, album);
     status.set_tooltip(&play_str);
 
@@ -586,7 +586,7 @@ fn fill_menu<T: TStatusBar>(app: &mut ConnectrApp,
     status.add_label("");
     status.add_label("Devices:");
     status.add_separator();
-    println!("Visible Devices:");
+    info!("Visible Devices:");
 
     let devices: Vec<(String,String)> = device_list.into_iter().map(|d| {
         (d.name.clone(), d.id.clone().unwrap_or(String::new()))
@@ -602,7 +602,7 @@ fn fill_menu<T: TStatusBar>(app: &mut ConnectrApp,
     let mut cur_volume: u32 = 0;
     let mut cur_volume_exact: u32 = 0;
     for dev in device_list {
-        println!("{}", dev);
+        info!("{}", dev);
         let id = match dev.id {
             Some(ref id) => id.clone(),
             None => "".to_string(),
@@ -629,7 +629,7 @@ fn fill_menu<T: TStatusBar>(app: &mut ConnectrApp,
         app.menu.device.push((item, id));
         touchbar.update_volume(cur_volume_exact);
     }
-    println!("");
+    info!("");
 
     status.add_label("");
     status.add_label("Volume:");
@@ -1041,7 +1041,6 @@ fn create_spotify_thread(rx_cmd: Receiver<String>) -> SpotifyThread {
                 {
                     let mut player_writer = player_state.write().unwrap();
                     let cmp = compare_playback_states(player_writer.as_ref(), play_state.as_ref());
-                    info!("State change: {:?}", cmp);
                     match cmp {
                         StateChange::Changed(time_ms) => {
                             track_play_time_ms += time_ms;
@@ -1216,7 +1215,7 @@ fn play_uri(spotify: &mut connectr::SpotifyConnectr, device: Option<&str>, uri: 
             require(spotify.play(Some(&ctx)));
         }
         None => {
-            println!("Transfer!");
+            info!("Transfer!");
             require(spotify.play(None));
         }
     };
