@@ -1,10 +1,10 @@
 [package]
 name = "connectr"
-version = "0.2.1-rc"
+version = "1.0.0-rc"
 authors = [ "Trevor Bentley <mrmekon@gmail.com>" ]
-description = "Spotify Connect library and systray/menubar application for controlling Spotify devices."
+description = "A super lightweight Spotify controller."
 keywords = ["spotify", "connect", "webapi", "systray", "menubar"]
-categories = ["api-bindings"]
+categories = ["api-bindings", "multimedia::audio"]
 homepage = "https://github.com/mrmekon/connectr"
 repository = "https://github.com/mrmekon/connectr"
 documentation = "https://mrmekon.github.io/connectr/connectr/"
@@ -34,20 +34,21 @@ scrobble = ["rustfm-scrobble"]
 default = ["scrobble"]
 
 [dependencies]
-curl = "0.4.6"
-open = "1.2.0"
-regex = "0.2"
-serde = "1.0.5"
-serde_json = "1.0.2"
-serde_derive = "1.0.5"
-url = "1.4.0"
-rust-ini = "0.9"
-time = "0.1"
-timer = {path = "deps/timer.rs", version="0.1.4"} # Modified for chrono 0.3.1
-chrono = "0.4"
-log = "0.3.7"
-log4rs = "0.6.3"
-ctrlc = "3.0.1"
+curl = "0.4.11"
+open = "1.2.1"
+regex = "0.2.5"
+serde = "1.0.27"
+serde_json = "1.0.9"
+serde_derive = "1.0.27"
+url = "1.6.0"
+rust-ini = "0.10.0"
+time = "0.1.39"
+#timer = {path = "deps/timer.rs", version="0.1.4"} # Modified for chrono 0.3.1
+timer = "0.2.0"
+chrono = "0.4.0"
+log = "0.4.1"
+log4rs = "0.8.0"
+ctrlc = "3.1.0"
 rustfm-scrobble = {version="0.9.1", optional = true}
 
 [dependencies.fruitbasket]
@@ -70,7 +71,7 @@ default-features = false
 version = "0.6"
 
 [target."cfg(target_os = \"macos\")".dependencies]
-cocoa = "0.9"
+cocoa = "0.13.0"
 objc-foundation = "0.1.1"
 objc_id = "0.1"
 
@@ -84,7 +85,7 @@ features = ["exception"]
 [dev-dependencies]
 hyper = "0.11"
 futures = "0.1.11"
-lazy_static = "0.2"
+lazy_static = "1.0"
 
 [package.metadata.release]
 sign-commit = false
