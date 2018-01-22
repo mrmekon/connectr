@@ -65,7 +65,7 @@ impl fmt::Display for ConnectDevice {
     }
 }
 
-#[derive(Deserialize)]
+#[derive(Deserialize, Default)]
 pub struct ConnectDeviceList {
     pub devices: Vec<ConnectDevice>,
 }
@@ -96,6 +96,12 @@ impl iter::IntoIterator for ConnectDeviceList {
     }
 }
 
+impl ConnectDeviceList {
+    pub fn len(&self) -> usize {
+        self.devices.len()
+    }
+}
+
 #[derive(Deserialize, Debug)]
 pub struct ConnectPlaybackArtist {
     pub name: String,
@@ -110,7 +116,7 @@ pub struct ConnectPlaybackAlbum {
 
 #[derive(Deserialize, Debug)]
 pub struct ConnectPlaybackItem {
-    pub duration_ms: u32,
+    pub duration_ms: u64,
     pub name: String,
     pub uri: String,
     pub album: ConnectPlaybackAlbum,
@@ -126,7 +132,7 @@ pub struct ConnectContext {
 pub struct PlayerState {
     pub timestamp: i64,
     pub device: ConnectDevice,
-    pub progress_ms: Option<u32>,
+    pub progress_ms: Option<u64>,
     pub is_playing: bool,
     pub item: Option<ConnectPlaybackItem>,
     pub shuffle_state: bool,

@@ -467,8 +467,7 @@ fn fill_menu<T: TStatusBar>(app: &mut ConnectrApp,
     let device_list = spotify.device_list.read().unwrap();
     let player_state = spotify.player_state.read().unwrap();
     let presets = spotify.presets.read().unwrap();
-    if device_list.is_none() ||
-        player_state.is_none() {
+    if player_state.is_none() {
             status.add_label("No devices found.");
             status.add_separator();
             status.add_quit("Exit");
@@ -592,6 +591,10 @@ fn fill_menu<T: TStatusBar>(app: &mut ConnectrApp,
         (d.name.clone(), d.id.clone().unwrap_or(String::new()))
     }).collect();
     touchbar.device_data.fill(devices);
+
+    if device_list.len() == 0 {
+        status.add_label("unavailable");
+    }
 
     let selected_arr: Vec<bool> = device_list.into_iter().map(|d| {d.is_active}).collect();
     if let Ok(selected) = selected_arr.binary_search(&true) {
@@ -801,7 +804,7 @@ fn find_wine_path() -> Option<std::path::PathBuf> {
 
 fn scrobble(spotify: &mut connectr::SpotifyConnectr,
             state: Option<&connectr::PlayerState>,
-            played_ms: u32,
+            played_ms: u64,
             done: bool) {
     if let Some(state) = flatten_player_state(state) {
         let len = state.duration_ms;
@@ -834,8 +837,8 @@ struct FlatPlayState {
     album: String,
     device_type: String,
     uri: String,
-    progress_ms: u32,
-    duration_ms: u32,
+    progress_ms: u64,
+    duration_ms: u64,
     is_playing: bool,
 }
 
@@ -868,9 +871,9 @@ fn flatten_player_state(state: Option<&connectr::PlayerState>) -> Option<FlatPla
 
 #[derive(Debug)]
 enum StateChange {
-    Stopped(u32),
-    Changed(u32),
-    Played(u32),
+    Stopped(u64),
+    Changed(u64),
+    Played(u64),
     Unchanged,
 }
 
@@ -898,20 +901,20 @@ fn compare_playback_states(old: Option<&connectr::PlayerState>,
         // Assume that up to 31 seconds of the previous track played.
         let played = std::cmp::min(
             std::cmp::max(old_track.duration_ms as i64 - old_time as i64, 0),
-            31000) as u32;
+            31000) as u64;
         if old_track.is_playing && !new_track.is_playing {
             // End of context
             return StateChange::Stopped(played);
         }
         return StateChange::Changed(played);
     }
-    let played = std::cmp::max(new_time as i64 - old_time as i64, 0) as u32;
+    let played = std::cmp::max(new_time as i64 - old_time as i64, 0) as u64;
     if (new_time == 0 && !new_track.is_playing) && (old_time > 0 && old_track.is_playing) {
         // Playlist finished and reset.  Normally caught above, but this
         // is a special case for a 1-track playlist.
         let played = std::cmp::min(
             std::cmp::max(old_track.duration_ms as i64 - old_time as i64, 0),
-            31000) as u32;
+            31000) as u64;
         return StateChange::Stopped(played);
     }
     if played == 0 {
@@ -937,7 +940,7 @@ struct SpotifyThread {
 fn create_spotify_thread(rx_cmd: Receiver<String>) -> SpotifyThread {
     let (tx_in,rx_in) = channel::<String>();
     let (tx_out,rx_out) = channel::<SpotifyThreadCommand>();
-    let device_list = Arc::new(RwLock::new(None));
+    let device_list = Arc::new(RwLock::new(Some(Default::default())));
     let player_state = Arc::new(RwLock::new(None));
     let presets = Arc::new(RwLock::new(vec![]));
     let thread_device_list = device_list.clone();
@@ -948,7 +951,7 @@ fn create_spotify_thread(rx_cmd: Receiver<String>) -> SpotifyThread {
         let rx = rx_in;
         let rx_cmd = rx_cmd;
         let mut refresh_time_utc = 0;
-        let mut track_play_time_ms: u32 = 0;
+        let mut track_play_time_ms: u64 = 0;
 
         // Continuously try to create a connection to Spotify web API.
         // If it fails, assume that the settings file is corrupt and inform
@@ -1035,7 +1038,10 @@ fn create_spotify_thread(rx_cmd: Receiver<String>) -> SpotifyThread {
                 let dev_list = spotify.request_device_list();
                 {
                     let mut dev_writer = device_list.write().unwrap();
-                    *dev_writer = dev_list;
+                    *dev_writer = match dev_list {
+                        Some(_) => dev_list,
+                        None => Some(Default::default()),
+                    };
                 }
                 let play_state = spotify.request_player_state();
                 {
