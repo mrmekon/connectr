@@ -1,0 +1,17 @@
+1.0.0-rc
+
+* Fix many crashes
+* Faster UI updates after commands
+* Support UTF-8 in web config
+* Feature: quick-save button
+*	Feature: search button (uses Spotify website)
+* Feature: alarm clocks
+* Feature: Last.fm scrobbling
+
+0.2.0
+
+* First binary release
+* Mac & Windows systray/menubar UI
+* Controls: Play/Pause/Skip/Select Device/Change Volume
+* Mac Touch Bar UI
+* Configure settings via web UI
