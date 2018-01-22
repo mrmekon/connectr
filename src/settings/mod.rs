@@ -419,6 +419,8 @@ pub fn save_web_alarm_config(config: BTreeMap<String,String>) -> Result<(), Sett
         if key == "cancel" {
             return Err("Canceled by user.".to_string());
         }
+        // Clear existing alarms
+        conf.delete(Some("alarms".to_owned()));
         // are you kidding me??
         let idx = key.chars().rev().take(1).collect::<Vec<char>>()[0].to_digit(10).unwrap_or(0) as usize;
         let entry = entries.get_mut(idx).unwrap();
