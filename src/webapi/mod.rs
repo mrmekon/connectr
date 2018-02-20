@@ -29,7 +29,7 @@ use super::http::HttpResponse;
 pub type DeviceId = String;
 pub type SpotifyResponse = HttpResponse;
 
-pub fn parse_spotify_token(json: &str) -> (String, String, u64) {
+pub fn parse_spotify_token(json: &str) -> Option<(String, String, u64)> {
     if let Ok(json_data) = serde_json::from_str(json) {
         let json_data: Value = json_data;
         let access_token = json_data["access_token"].as_str().unwrap_or("");
@@ -38,10 +38,9 @@ pub fn parse_spotify_token(json: &str) -> (String, String, u64) {
             None => "",
         };
         let expires_in = json_data["expires_in"].as_u64().unwrap_or(0 as u64);
-        return (String::from(access_token),String::from(refresh_token), expires_in);
+        return Some((String::from(access_token),String::from(refresh_token), expires_in));
     }
-    // Default to blank, expiring in 5s to trigger a retry.
-    (String::new(), String::new(), 5000)
+    None
 }
 
 #[derive(Deserialize, Debug, Default)]
@@ -704,6 +703,7 @@ impl<'a> SpotifyConnectr<'a> {
                 self.expire_utc = Some(self.expire_offset_to_utc(expires_in));
             },
             None => {
+                warn!("Credential refresh rejected.  Attempting to reauthenticate.");
                 self.authenticate();
             }
         }
@@ -762,16 +762,21 @@ impl<'a> SpotifyConnectr<'a> {
     pub fn authenticate(&mut self) {
         info!("Requesting fresh credentials.");
         self.auth_code = http::authenticate(self.api.scopes, self.api.authorize, &self.settings);
-        let (access_token, refresh_token, expires_in) = self.request_oauth_tokens(&self.auth_code, &self.settings);
-        let expire_utc = self.expire_offset_to_utc(expires_in);
-        let _ = settings::save_tokens(self.api.scopes_version, &access_token,
-                                      &refresh_token, expire_utc);
-        self.access_token = Some(access_token);
-        self.refresh_token = Some(refresh_token);
-        self.expire_utc = Some(expire_utc);
+        if let Some((access_token, refresh_token, expires_in)) = self.request_oauth_tokens(&self.auth_code, &self.settings) {
+            let expire_utc = self.expire_offset_to_utc(expires_in);
+            let _ = settings::save_tokens(self.api.scopes_version, &access_token,
+                                          &refresh_token, expire_utc);
+            self.access_token = Some(access_token);
+            self.refresh_token = Some(refresh_token);
+            self.expire_utc = Some(expire_utc);
+        }
+        else {
+            let expire_utc = self.expire_offset_to_utc(30);
+            self.expire_utc = Some(expire_utc);
+        }
         let _ = self.schedule_token_refresh();
     }
-    pub fn request_oauth_tokens(&self, auth_code: &str, settings: &settings::Settings) -> (String, String, u64) {
+    pub fn request_oauth_tokens(&self, auth_code: &str, settings: &settings::Settings) -> Option<(String, String, u64)> {
         let query = QueryString::new()
             .add("grant_type", "authorization_code")
             .add("code", auth_code)
@@ -783,10 +788,12 @@ impl<'a> SpotifyConnectr<'a> {
                                        http::AccessToken::None);
         match json_response.code {
             Some(200) => {
-                parse_spotify_token(&json_response.unwrap())
+                match parse_spotify_token(&json_response.unwrap()) {
+                    Some(resp) => Some(resp),
+                    None => None,
+                }
             },
-            // Default to blank, expiring in 5s to trigger a retry.
-            _ => { (String::new(), String::new(), 5000) }
+            _ => { None }
         }
     }
     pub fn connect(&mut self) {
@@ -820,10 +827,25 @@ impl<'a> SpotifyConnectr<'a> {
                                        http::HttpMethod::POST, http::AccessToken::None);
         match json_response.code {
             Some(200) => {
-                let (access_token, _, expires_in) = parse_spotify_token(&json_response.data.unwrap());
-                Some((access_token, expires_in))
+                match parse_spotify_token(&json_response.data.unwrap()) {
+                    Some((access_token,_,expires_in)) => Some((access_token, expires_in)),
+                    None => match self.access_token {
+                        Some(ref token) => Some((token.clone(), 30)),
+                        None => None,
+                    },
+                }
             },
-            _ => { None }
+            Some(e) if e == 401 || e == 403 => {
+                warn!("Refresh token rejected permanently: Error {}", e);
+                None
+            },
+            e @ _ => {
+                warn!("Refresh token rejected temporarily: Error {}", e.unwrap_or(0));
+                match self.access_token {
+                    Some(ref token) => Some((token.clone(), 30)),
+                    None => None
+                }
+            }
         }
     }
     pub fn request_device_list(&mut self) -> Option<ConnectDeviceList> {
