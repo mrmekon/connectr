@@ -81,6 +81,7 @@ mod tests {
     macro_rules! post {
     ($body_in:ident, $pairs_out:ident, $block_in:block) => {
         {
+            Box::new(
             // Read chunks from user provided body var $body_in
             $body_in.fold(vec![], |mut acc, chunk| {
                 acc.extend(chunk);
@@ -96,7 +97,7 @@ mod tests {
                 let (code, response) = $block_in;
                 let res = Response::new();
                 Ok(res.with_status(code).with_body(response))
-            }).boxed()
+            }))
         }
     };
     }
@@ -127,12 +128,12 @@ mod tests {
                 type Request = Request;
                 type Response = Response;
                 type Error = hyper::Error;
-                type Future = futures::BoxFuture<Response, hyper::Error>;
+                type Future = Box<Future<Item = Self::Response, Error = Self::Error>>;
                 fn call(&self, req: Request) -> Self::Future {
                     let (method, uri, _, _headers, body) = req.deconstruct();
                     match(method, uri.path()) {
                         (Post, "/api/token") => post!(body, pairs, { token_response(&pairs) }),
-                        _ => futures::future::ok(Response::new().with_status(StatusCode::NotFound)).boxed(),
+                        _ => Box::new(futures::future::ok(Response::new().with_status(StatusCode::NotFound))),
                     }
                 }
             }
@@ -162,7 +163,7 @@ mod tests {
         let res = spotify.refresh_oauth_tokens();
         // Unlock webserver init so all other tests can run
         WEBSERVER_STARTED.store(true, Ordering::Relaxed);
-        assert!(res.is_none());
+        assert!(res.is_some());
     }
 
     #[test]
