@@ -53,6 +53,10 @@ impl TStatusBar for WindowsStatusBar {
         };
         let _ = win.set_tooltip(&tooltip);
     }
+    fn add_submenu(&mut self, _label: &str, _callback: NSCallback) -> *mut Object {
+        // TODO: implement submenu support on Windows
+        0 as *mut Object
+    }
     fn add_label(&mut self, label: &str) {
         let ref mut win = &mut self.app.window;
         let idx = win.add_menu_item(&label.to_string(), false, |_| {});
@@ -70,7 +74,7 @@ impl TStatusBar for WindowsStatusBar {
         let ref mut win = &mut self.app.window;
         let _ = win.add_menu_separator();
     }
-    fn add_item(&mut self, item: &str, callback: NSCallback, selected: bool) -> *mut Object {
+    fn add_item(&mut self, _menu: Option<*mut Object>, item: &str, callback: NSCallback, selected: bool) -> *mut Object {
         let ref mut win = &mut self.app.window;
         let idx = self.idx.get();
         self.idx.set(idx+1);

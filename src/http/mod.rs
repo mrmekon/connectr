@@ -254,13 +254,14 @@ pub fn config_request_local_webserver(port: u32, form: String, reply: String) ->
             let mut post_bytes: u32 = 0;
             let re = Regex::new(r"Content-Length: ([0-9 ]+)").unwrap();
             for line in reader.by_ref().lines() {
-                let line_str = line.unwrap();
-                if re.is_match(line_str.as_str()) {
-                    post_bytes = re.captures(line_str.as_str()).unwrap()[1].parse::<u32>().unwrap();
-                }
-                response.push(line_str.clone());
-                if line_str == "" {
-                    break;
+                if let Ok(line_str) = line {
+                    if re.is_match(line_str.as_str()) {
+                        post_bytes = re.captures(line_str.as_str()).unwrap()[1].parse::<u32>().unwrap();
+                    }
+                    response.push(line_str.clone());
+                    if line_str == "" {
+                        break;
+                    }
                 }
             }
             match post_bytes {
