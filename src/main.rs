@@ -3,6 +3,8 @@ use connectr::SpotifyResponse;
 use connectr::TStatusBar;
 use connectr::MenuItem;
 use connectr::NSCallback;
+use connectr::ConnectDeviceList;
+use connectr::PlayerState;
 
 extern crate rubrail;
 use rubrail::Touchbar;
@@ -467,14 +469,17 @@ fn fill_menu<T: TStatusBar>(app: &mut ConnectrApp,
     let device_list = spotify.device_list.read().unwrap();
     let player_state = spotify.player_state.read().unwrap();
     let presets = spotify.presets.read().unwrap();
-    if player_state.is_none() {
-            status.add_label("No devices found.");
-            status.add_separator();
-            status.add_quit("Exit");
-            return;
-        }
-    let device_list = device_list.as_ref().unwrap();
-    let player_state = player_state.as_ref().unwrap();
+
+    let empty_device_list: ConnectDeviceList = Default::default();
+    let empty_player_state: PlayerState = Default::default();
+    let device_list = match device_list.as_ref() {
+        Some(x) => x,
+        None => &empty_device_list,
+    };
+    let player_state = match player_state.as_ref() {
+        Some(x) => x,
+        None => &empty_player_state,
+    };
 
     let track = match player_state.item {
         Some(ref item) => item.name.clone(),
@@ -489,25 +494,36 @@ fn fill_menu<T: TStatusBar>(app: &mut ConnectrApp,
         _ => "unknown".to_string()
     };
 
-    info!("Playback State:\n{}", player_state);
-    let play_str = format!("{}\n{}\n{}", track, artist, album);
-    status.set_tooltip(&play_str);
-
-    status.add_label("Now Playing:");
-    status.add_separator();
-    //status.add_label(&player_state.item.name);
-    status.add_label(&format!("{:<50}", track));
-    status.add_label(&format!("{:<50}", artist));
-    status.add_label(&format!("{:<50}", album));
-    touchbar.update_now_playing(&track, &artist);
-
     let duration_ms = match player_state.item {
         Some(ref item) => item.duration_ms,
         _ => 0,
     };
     let min = duration_ms / 1000 / 60;
     let sec = (duration_ms - (min * 60 * 1000)) / 1000;
-    status.add_label(&format!("{:<50}", format!("{}:{:02}", min, sec)));
+
+    info!("Playback State:\n{}", player_state);
+    match player_state.item {
+        Some(_) => {
+            let play_str = format!("{}\n{}\n{}", track, artist, album);
+            status.set_tooltip(&play_str);
+        },
+        None => status.set_tooltip("unknown"),
+    }
+
+    status.add_label("Now Playing:");
+    status.add_separator();
+    match player_state.item {
+        Some(_) => {
+            status.add_label(&format!("{:<50}", track));
+            status.add_label(&format!("{:<50}", artist));
+            status.add_label(&format!("{:<50}", album));
+            status.add_label(&format!("{:<50}", format!("{}:{:02}", min, sec)));
+        },
+        None => {
+            status.add_label(&format!("{:<50}", "unknown"));
+        }
+    }
+    touchbar.update_now_playing(&track, &artist);
 
     status.add_label("");
     status.add_label("Actions:");
