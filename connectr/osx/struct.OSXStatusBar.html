@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="generator" content="rustdoc">
+    <meta name="description" content="API documentation for the Rust `OSXStatusBar` struct in crate `connectr`.">
+    <meta name="keywords" content="rust, rustlang, rust-lang, OSXStatusBar">
+
+    <title>connectr::osx::OSXStatusBar - Rust</title>
+
+    <link rel="stylesheet" type="text/css" href="../../normalize.css">
+    <link rel="stylesheet" type="text/css" href="../../rustdoc.css"
+          id="mainThemeStyle">
+    
+    <link rel="stylesheet" type="text/css" href="../../dark.css">
+    <link rel="stylesheet" type="text/css" href="../../main.css" id="themeStyle">
+    <script src="../../storage.js"></script>
+    
+
+    
+    
+</head>
+<body class="rustdoc struct">
+    <!--[if lte IE 8]>
+    <div class="warning">
+        This old browser is unsupported and will most likely display funky
+        things.
+    </div>
+    <![endif]-->
+
+    
+
+    <nav class="sidebar">
+        <div class="sidebar-menu">&#9776;</div>
+        
+        <p class='location'>Struct OSXStatusBar</p><div class="sidebar-elems"><div class="block items"><a class="sidebar-title" href="#implementations">Trait Implementations</a><div class="sidebar-links"><a href="#impl-TStatusBar">TStatusBar</a></div><a class="sidebar-title" href="#synthetic-implementations">Auto Trait Implementations</a><div class="sidebar-links"><a href="#impl-Send">!Send</a><a href="#impl-Sync">!Sync</a></div></div><p class='location'><a href='../index.html'>connectr</a>::<wbr><a href='index.html'>osx</a></p><script>window.sidebarCurrent = {name: 'OSXStatusBar', ty: 'struct', relpath: ''};</script><script defer src="sidebar-items.js"></script></div>
+    </nav>
+
+    <div class="theme-picker">
+        <button id="theme-picker" aria-label="Pick another theme!">
+            <img src="../../brush.svg" width="18" alt="Pick another theme!">
+        </button>
+        <div id="theme-choices"></div>
+    </div>
+    <script src="../../theme.js"></script>
+    <nav class="sub">
+        <form class="search-form js-only">
+            <div class="search-container">
+                <input class="search-input" name="search"
+                       autocomplete="off"
+                       placeholder="Click or press ‘S’ to search, ‘?’ for more options…"
+                       type="search">
+            </div>
+        </form>
+    </nav>
+
+    <section id='main' class="content">
+<h1 class='fqn'><span class='in-band'>Struct <a href='../index.html'>connectr</a>::<wbr><a href='index.html'>osx</a>::<wbr><a class="struct" href=''>OSXStatusBar</a></span><span class='out-of-band'><span id='render-detail'>
+                   <a id="toggle-all-docs" href="javascript:void(0)" title="collapse all docs">
+                       [<span class='inner'>&#x2212;</span>]
+                   </a>
+               </span><a class='srclink' href='../../src/connectr/osx/mod.rs.html#33-38' title='goto source code'>[src]</a></span></h1>
+<pre class='rust struct'>pub struct OSXStatusBar { /* fields omitted */ }</pre>
+            <h2 id='implementations' class='small-section-header'>
+              Trait Implementations<a href='#implementations' class='anchor'></a>
+            </h2>
+            <div id='implementations-list'>
+        <h3 id='impl-TStatusBar' class='impl'><span class='in-band'><code>impl <a class="trait" href="../../connectr/trait.TStatusBar.html" title="trait connectr::TStatusBar">TStatusBar</a> for <a class="struct" href="../../connectr/osx/struct.OSXStatusBar.html" title="struct connectr::osx::OSXStatusBar">OSXStatusBar</a></code><a href='#impl-TStatusBar' class='anchor'></a></span><span class='out-of-band'><div class='ghost'></div><a class='srclink' href='../../src/connectr/osx/mod.rs.html#40-225' title='goto source code'>[src]</a></span></h3>
+<div class='impl-items'><h4 id='associatedtype.S' class="type"><span id='S.t' class='invisible'><code>type <a href='../../connectr/trait.TStatusBar.html#associatedtype.S' class="type">S</a> = <a class="struct" href="../../connectr/osx/struct.OSXStatusBar.html" title="struct connectr::osx::OSXStatusBar">OSXStatusBar</a></code></span></h4>
+<h4 id='method.new' class="method"><span id='new.v' class='invisible'><code>fn <a href='../../connectr/trait.TStatusBar.html#tymethod.new' class='fnname'>new</a>(tx: <a class="struct" href="https://doc.rust-lang.org/nightly/std/sync/mpsc/struct.Sender.html" title="struct std::sync::mpsc::Sender">Sender</a>&lt;<a class="struct" href="https://doc.rust-lang.org/nightly/alloc/string/struct.String.html" title="struct alloc::string::String">String</a>&gt;) -&gt; <a class="struct" href="../../connectr/osx/struct.OSXStatusBar.html" title="struct connectr::osx::OSXStatusBar">OSXStatusBar</a></code></span><span class='out-of-band'><div class='ghost'></div><a class='srclink' href='../../src/connectr/osx/mod.rs.html#42-102' title='goto source code'>[src]</a></span></h4>
+<h4 id='method.can_redraw' class="method"><span id='can_redraw.v' class='invisible'><code>fn <a href='../../connectr/trait.TStatusBar.html#tymethod.can_redraw' class='fnname'>can_redraw</a>(&amp;mut self) -&gt; <a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.bool.html">bool</a></code></span><span class='out-of-band'><div class='ghost'></div><a class='srclink' href='../../src/connectr/osx/mod.rs.html#103-105' title='goto source code'>[src]</a></span></h4>
+<h4 id='method.clear_items' class="method"><span id='clear_items.v' class='invisible'><code>fn <a href='../../connectr/trait.TStatusBar.html#tymethod.clear_items' class='fnname'>clear_items</a>(&amp;mut self)</code></span><span class='out-of-band'><div class='ghost'></div><a class='srclink' href='../../src/connectr/osx/mod.rs.html#106-114' title='goto source code'>[src]</a></span></h4>
+<h4 id='method.set_tooltip' class="method"><span id='set_tooltip.v' class='invisible'><code>fn <a href='../../connectr/trait.TStatusBar.html#tymethod.set_tooltip' class='fnname'>set_tooltip</a>(&amp;mut self, text: &amp;<a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.str.html">str</a>)</code></span><span class='out-of-band'><div class='ghost'></div><a class='srclink' href='../../src/connectr/osx/mod.rs.html#115-121' title='goto source code'>[src]</a></span></h4>
+<h4 id='method.add_label' class="method"><span id='add_label.v' class='invisible'><code>fn <a href='../../connectr/trait.TStatusBar.html#tymethod.add_label' class='fnname'>add_label</a>(&amp;mut self, label: &amp;<a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.str.html">str</a>)</code></span><span class='out-of-band'><div class='ghost'></div><a class='srclink' href='../../src/connectr/osx/mod.rs.html#122-133' title='goto source code'>[src]</a></span></h4>
+<h4 id='method.add_quit' class="method"><span id='add_quit.v' class='invisible'><code>fn <a href='../../connectr/trait.TStatusBar.html#tymethod.add_quit' class='fnname'>add_quit</a>(&amp;mut self, label: &amp;<a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.str.html">str</a>)</code></span><span class='out-of-band'><div class='ghost'></div><a class='srclink' href='../../src/connectr/osx/mod.rs.html#134-145' title='goto source code'>[src]</a></span></h4>
+<h4 id='method.add_separator' class="method"><span id='add_separator.v' class='invisible'><code>fn <a href='../../connectr/trait.TStatusBar.html#tymethod.add_separator' class='fnname'>add_separator</a>(&amp;mut self)</code></span><span class='out-of-band'><div class='ghost'></div><a class='srclink' href='../../src/connectr/osx/mod.rs.html#146-152' title='goto source code'>[src]</a></span></h4>
+<h4 id='method.add_item' class="method"><span id='add_item.v' class='invisible'><code>fn <a href='../../connectr/trait.TStatusBar.html#tymethod.add_item' class='fnname'>add_item</a>(<br>&nbsp;&nbsp;&nbsp;&nbsp;&amp;mut self, <br>&nbsp;&nbsp;&nbsp;&nbsp;menu: <a class="enum" href="https://doc.rust-lang.org/nightly/core/option/enum.Option.html" title="enum core::option::Option">Option</a>&lt;<a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.pointer.html">*mut </a><a class="type" href="../../connectr/osx/type.Object.html" title="type connectr::osx::Object">Object</a>&gt;, <br>&nbsp;&nbsp;&nbsp;&nbsp;item: &amp;<a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.str.html">str</a>, <br>&nbsp;&nbsp;&nbsp;&nbsp;callback: <a class="type" href="../../connectr/type.NSCallback.html" title="type connectr::NSCallback">NSCallback</a>, <br>&nbsp;&nbsp;&nbsp;&nbsp;selected: <a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.bool.html">bool</a><br>) -&gt; <a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.pointer.html">*mut </a><a class="type" href="../../connectr/osx/type.Object.html" title="type connectr::osx::Object">Object</a></code></span><span class='out-of-band'><div class='ghost'></div><a class='srclink' href='../../src/connectr/osx/mod.rs.html#156-178' title='goto source code'>[src]</a></span></h4>
+<h4 id='method.add_submenu' class="method"><span id='add_submenu.v' class='invisible'><code>fn <a href='../../connectr/trait.TStatusBar.html#tymethod.add_submenu' class='fnname'>add_submenu</a>(&amp;mut self, label: &amp;<a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.str.html">str</a>, callback: <a class="type" href="../../connectr/type.NSCallback.html" title="type connectr::NSCallback">NSCallback</a>) -&gt; <a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.pointer.html">*mut </a><a class="type" href="../../connectr/osx/type.Object.html" title="type connectr::osx::Object">Object</a></code></span><span class='out-of-band'><div class='ghost'></div><a class='srclink' href='../../src/connectr/osx/mod.rs.html#179-198' title='goto source code'>[src]</a></span></h4>
+<h4 id='method.update_item' class="method"><span id='update_item.v' class='invisible'><code>fn <a href='../../connectr/trait.TStatusBar.html#tymethod.update_item' class='fnname'>update_item</a>(&amp;mut self, item: <a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.pointer.html">*mut </a><a class="type" href="../../connectr/osx/type.Object.html" title="type connectr::osx::Object">Object</a>, label: &amp;<a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.str.html">str</a>)</code></span><span class='out-of-band'><div class='ghost'></div><a class='srclink' href='../../src/connectr/osx/mod.rs.html#199-205' title='goto source code'>[src]</a></span></h4>
+<h4 id='method.sel_item' class="method"><span id='sel_item.v' class='invisible'><code>fn <a href='../../connectr/trait.TStatusBar.html#tymethod.sel_item' class='fnname'>sel_item</a>(&amp;mut self, sender: <a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.u64.html">u64</a>)</code></span><span class='out-of-band'><div class='ghost'></div><a class='srclink' href='../../src/connectr/osx/mod.rs.html#206-211' title='goto source code'>[src]</a></span></h4>
+<h4 id='method.unsel_item' class="method"><span id='unsel_item.v' class='invisible'><code>fn <a href='../../connectr/trait.TStatusBar.html#tymethod.unsel_item' class='fnname'>unsel_item</a>(&amp;mut self, sender: <a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.u64.html">u64</a>)</code></span><span class='out-of-band'><div class='ghost'></div><a class='srclink' href='../../src/connectr/osx/mod.rs.html#212-217' title='goto source code'>[src]</a></span></h4>
+<h4 id='method.run' class="method"><span id='run.v' class='invisible'><code>fn <a href='../../connectr/trait.TStatusBar.html#tymethod.run' class='fnname'>run</a>(&amp;mut self, block: <a class="primitive" href="https://doc.rust-lang.org/nightly/std/primitive.bool.html">bool</a>)</code></span><span class='out-of-band'><div class='ghost'></div><a class='srclink' href='../../src/connectr/osx/mod.rs.html#218-224' title='goto source code'>[src]</a></span></h4>
+</div></div>
+                <h2 id='synthetic-implementations' class='small-section-header'>
+                  Auto Trait Implementations<a href='#synthetic-implementations' class='anchor'></a>
+                </h2>
+                <div id='synthetic-implementations-list'>
+            <h3 id='impl-Send' class='impl'><span class='in-band'><code>impl !<a class="trait" href="https://doc.rust-lang.org/nightly/core/marker/trait.Send.html" title="trait core::marker::Send">Send</a> for <a class="struct" href="../../connectr/osx/struct.OSXStatusBar.html" title="struct connectr::osx::OSXStatusBar">OSXStatusBar</a></code><a href='#impl-Send' class='anchor'></a></span><span class='out-of-band'></span></h3>
+<div class='impl-items'></div><h3 id='impl-Sync' class='impl'><span class='in-band'><code>impl !<a class="trait" href="https://doc.rust-lang.org/nightly/core/marker/trait.Sync.html" title="trait core::marker::Sync">Sync</a> for <a class="struct" href="../../connectr/osx/struct.OSXStatusBar.html" title="struct connectr::osx::OSXStatusBar">OSXStatusBar</a></code><a href='#impl-Sync' class='anchor'></a></span><span class='out-of-band'></span></h3>
+<div class='impl-items'></div></div></section>
+    <section id='search' class="content hidden"></section>
+
+    <section class="footer"></section>
+
+    <aside id="help" class="hidden">
+        <div>
+            <h1 class="hidden">Help</h1>
+
+            <div class="shortcuts">
+                <h2>Keyboard Shortcuts</h2>
+
+                <dl>
+                    <dt><kbd>?</kbd></dt>
+                    <dd>Show this help dialog</dd>
+                    <dt><kbd>S</kbd></dt>
+                    <dd>Focus the search field</dd>
+                    <dt><kbd>↑</kbd></dt>
+                    <dd>Move up in search results</dd>
+                    <dt><kbd>↓</kbd></dt>
+                    <dd>Move down in search results</dd>
+                    <dt><kbd>↹</kbd></dt>
+                    <dd>Switch tab</dd>
+                    <dt><kbd>&#9166;</kbd></dt>
+                    <dd>Go to active search result</dd>
+                    <dt><kbd>+</kbd></dt>
+                    <dd>Expand all sections</dd>
+                    <dt><kbd>-</kbd></dt>
+                    <dd>Collapse all sections</dd>
+                </dl>
+            </div>
+
+            <div class="infos">
+                <h2>Search Tricks</h2>
+
+                <p>
+                    Prefix searches with a type followed by a colon (e.g.
+                    <code>fn:</code>) to restrict the search to a given type.
+                </p>
+
+                <p>
+                    Accepted types are: <code>fn</code>, <code>mod</code>,
+                    <code>struct</code>, <code>enum</code>,
+                    <code>trait</code>, <code>type</code>, <code>macro</code>,
+                    and <code>const</code>.
+                </p>
+
+                <p>
+                    Search functions by type signature (e.g.
+                    <code>vec -> usize</code> or <code>* -> vec</code>)
+                </p>
+            </div>
+        </div>
+    </aside>
+
+    
+
+    <script>
+        window.rootPath = "../../";
+        window.currentCrate = "connectr";
+    </script>
+    <script src="../../main.js"></script>
+    <script defer src="../../search-index.js"></script>
+</body>
+</html>

@@ -1,0 +1,1 @@
+initSidebarItems({"constant":[["WEB_PORT",""]],"fn":[["read_settings",""],["request_web_alarm_config",""],["request_web_config",""],["save_tokens",""],["save_web_alarm_config",""],["save_web_config",""]],"struct":[["LastfmSettings",""],["Settings",""]],"type":[["SettingsError",""]]});

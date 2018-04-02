@@ -1,0 +1,1 @@
+initSidebarItems({"enum":[["AccessToken",""],["HttpMethod",""]],"fn":[["authenticate",""],["config_request_local_webserver",""],["http",""]],"struct":[["HttpResponse",""]],"type":[["HttpErrorString",""]]});

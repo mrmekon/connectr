@@ -1,0 +1,1 @@
+initSidebarItems({"constant":[["SPOTIFY_API",""]],"fn":[["reconfigure",""],["search_paths",""]],"mod":[["http",""],["osx",""],["settings",""],["webapi",""]],"struct":[["DummyScrobble",""],["DummyScrobbler",""],["DummyStatusBar",""],["SpotifyEndpoints",""]],"trait":[["TStatusBar",""]],"type":[["MenuItem",""],["NSCallback",""],["Object",""],["StatusBar",""]]});

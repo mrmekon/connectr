@@ -1,0 +1,1 @@
+initSidebarItems({"fn":[["resource_dir",""]],"struct":[["OSXStatusBar",""]],"type":[["Object",""]]});
