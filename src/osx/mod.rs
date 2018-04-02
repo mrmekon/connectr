@@ -53,12 +53,12 @@ impl TStatusBar for OSXStatusBar {
             };
 
             // Default mode for menu bar items: blue highlight when selected
-            msg_send![bar.status_bar_item, setHighlightMode:YES];
+            let _: () = msg_send![bar.status_bar_item, setHighlightMode:YES];
 
             // Set title.  Only displayed if image fails to load.
             let title = NSString::alloc(nil).init_str("connectr");
             NSButton::setTitle_(bar.status_bar_item, title);
-            let _ = msg_send![title, release];
+            let _: () = msg_send![title, release];
 
             // Look for icon in OS X bundle if there is one, otherwise current dir.
             // See docs/icons.md for explanation of icon files.
@@ -75,10 +75,10 @@ impl TStatusBar for OSXStatusBar {
             let img = NSString::alloc(nil).init_str(&img_path);
             let icon = NSImage::alloc(nil).initWithContentsOfFile_(img);
             #[cfg(feature = "mac_white_icon")]
-            let _ = msg_send![icon, setTemplate: YES]; // enable to make icon white
+            let _: () = msg_send![icon, setTemplate: YES]; // enable to make icon white
             bar.status_bar_item.button().setImage_(icon);
-            let _ = msg_send![img, release];
-            let _ = msg_send![icon, release];
+            let _: () = msg_send![img, release];
+            let _: () = msg_send![icon, release];
 
             // Add the same image again as an alternate image.  I'm not sure how the
             // blending is performed, but it behaves differently and better if an
@@ -86,9 +86,9 @@ impl TStatusBar for OSXStatusBar {
             // much in 'dark mode' when selected, and is too light in 'light mode'.
             let img = NSString::alloc(nil).init_str(&img_path);
             let icon = NSImage::alloc(nil).initWithContentsOfFile_(img);
-            let _ = msg_send![bar.status_bar_item.button(), setAlternateImage: icon];
-            let _ = msg_send![img, release];
-            let _ = msg_send![icon, release];
+            let _: () = msg_send![bar.status_bar_item.button(), setAlternateImage: icon];
+            let _: () = msg_send![img, release];
+            let _: () = msg_send![icon, release];
 
             bar.status_bar_item.setMenu_(bar.menu_bar);
             bar.object.cb_fn = Some(Box::new(
@@ -108,15 +108,15 @@ impl TStatusBar for OSXStatusBar {
             let old_menu = self.menu_bar;
             self.menu_bar = NSMenu::new(nil);
             self.status_bar_item.setMenu_(self.menu_bar);
-            let _ = msg_send![old_menu, removeAllItems];
-            let _ = msg_send![old_menu, release];
+            let _: () = msg_send![old_menu, removeAllItems];
+            let _: () = msg_send![old_menu, release];
         }
     }
     fn set_tooltip(&mut self, text: &str) {
         unsafe {
             let img = NSString::alloc(nil).init_str(text);
-            let _ = msg_send![self.status_bar_item.button(), setToolTip: img];
-            let _ = msg_send![img, release];
+            let _: () = msg_send![self.status_bar_item.button(), setToolTip: img];
+            let _: () = msg_send![img, release];
         }
     }
     fn add_label(&mut self, label: &str) {
@@ -125,10 +125,10 @@ impl TStatusBar for OSXStatusBar {
             let quit_key = NSString::alloc(nil).init_str("");
             let app_menu_item = NSMenuItem::alloc(nil)
                 .initWithTitle_action_keyEquivalent_(txt, self.object.selector(), quit_key);
-            let _ = msg_send![txt, release];
-            let _ = msg_send![quit_key, release];
+            let _: () = msg_send![txt, release];
+            let _: () = msg_send![quit_key, release];
             self.menu_bar.addItem_(app_menu_item);
-            let _ = msg_send![app_menu_item, release];
+            let _: () = msg_send![app_menu_item, release];
         }
     }
     fn add_quit(&mut self, label: &str) {
@@ -137,10 +137,10 @@ impl TStatusBar for OSXStatusBar {
             let quit_key = NSString::alloc(nil).init_str("");
             let app_menu_item = NSMenuItem::alloc(nil)
                 .initWithTitle_action_keyEquivalent_(txt, sel!(terminate:), quit_key);
-            let _ = msg_send![txt, release];
-            let _ = msg_send![quit_key, release];
+            let _: () = msg_send![txt, release];
+            let _: () = msg_send![quit_key, release];
             self.menu_bar.addItem_(app_menu_item);
-            let _ = msg_send![app_menu_item, release];
+            let _: () = msg_send![app_menu_item, release];
         }
     }
     fn add_separator(&mut self) {
@@ -156,8 +156,8 @@ impl TStatusBar for OSXStatusBar {
             let quit_key = NSString::alloc(nil).init_str("");
             let app_menu_item = NSMenuItem::alloc(nil)
                 .initWithTitle_action_keyEquivalent_(txt, self.object.selector(), quit_key);
-            let _ = msg_send![txt, release];
-            let _ = msg_send![quit_key, release];
+            let _: () = msg_send![txt, release];
+            let _: () = msg_send![quit_key, release];
             self.object.add_callback(app_menu_item, callback);
             let objc = self.object.take_objc();
             let _: () = msg_send![app_menu_item, setTarget: objc];
@@ -166,7 +166,7 @@ impl TStatusBar for OSXStatusBar {
             }
             let item: *mut Object = app_menu_item;
             self.menu_bar.addItem_(app_menu_item);
-            let _ = msg_send![app_menu_item, release];
+            let _: () = msg_send![app_menu_item, release];
             item
         }
     }
@@ -174,7 +174,7 @@ impl TStatusBar for OSXStatusBar {
         unsafe {
             let ns_label = NSString::alloc(nil).init_str(label);
             let _: () = msg_send![item, setTitle: ns_label];
-            let _ = msg_send![ns_label, release];
+            let _: () = msg_send![ns_label, release];
         }
     }
     fn sel_item(&mut self, sender: u64) {
@@ -204,13 +204,13 @@ impl TStatusBar for OSXStatusBar {
 //        let button = NSString::alloc(nil).init_str("ok");
 //        let cls = Class::get("NSAlert").unwrap();
 //        let alert: *mut Object = msg_send![cls, alloc];
-//        let _ = msg_send![alert, init];
-//        let _ = msg_send![alert, setMessageText: ns_text];
-//        let _ = msg_send![alert, addButtonWithTitle: button];
-//        let _ = msg_send![alert, runModal];
-//        let _ = msg_send![ns_text, release];
-//        let _ = msg_send![button, release];
-//        let _ = msg_send![alert, release];
+//        let _: () = msg_send![alert, init];
+//        let _: () = msg_send![alert, setMessageText: ns_text];
+//        let _: () = msg_send![alert, addButtonWithTitle: button];
+//        let _: () = msg_send![alert, runModal];
+//        let _: () = msg_send![ns_text, release];
+//        let _: () = msg_send![button, release];
+//        let _: () = msg_send![alert, release];
 //    }
 //}
 
