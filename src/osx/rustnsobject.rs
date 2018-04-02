@@ -74,7 +74,7 @@ impl NSObjTrait for NSObj {
         });
         unsafe {
             let ptr: u64 = &*rust as *const RustWrapperClass as u64;
-            let _ = msg_send![rust.objc, setRustData: ptr];
+            let _:() = msg_send![rust.objc, setRustData: ptr];
         }
         return rust
     }
