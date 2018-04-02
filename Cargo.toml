@@ -36,23 +36,23 @@ default = ["scrobble"]
 [dependencies]
 curl = "0.4.11"
 open = "1.2.1"
-regex = "0.2.5"
-serde = "1.0.27"
-serde_json = "1.0.9"
-serde_derive = "1.0.27"
-url = "1.6.0"
-rust-ini = "0.10.0"
+regex = "0.2.10"
+serde = "1.0.37"
+serde_json = "1.0.13"
+serde_derive = "1.0.37"
+url = "1.7.0"
+rust-ini = "0.10.3"
 time = "0.1.39"
 #timer = {path = "deps/timer.rs", version="0.1.4"} # Modified for chrono 0.3.1
 timer = "0.2.0"
-chrono = "0.4.0"
+chrono = "0.4.1"
 log = "0.4.1"
 log4rs = "0.8.0"
 ctrlc = "3.1.0"
 rustfm-scrobble = {version="0.9.1", optional = true}
 
 [dependencies.fruitbasket]
-version = "0.5"
+version = "0.6"
 features = ["logging"]
 
 [target."cfg(windows)".dependencies]
@@ -62,21 +62,21 @@ systray = {path = "deps/systray-rs", version="0.1.1-connectr"}
 
 [target."cfg(windows)".dependencies.rubrail]
 default-features=false
-version = "0.6"
+version = "0.7"
 
 [target."cfg(all(unix, not(target_os = \"macos\")))".dependencies]
 
 [target."cfg(all(unix, not(target_os = \"macos\")))".dependencies.rubrail]
 default-features = false
-version = "0.6"
+version = "0.7"
 
 [target."cfg(target_os = \"macos\")".dependencies]
-cocoa = "0.13.0"
+cocoa = "0.14.0"
 objc-foundation = "0.1.1"
 objc_id = "0.1"
 
 [target."cfg(target_os = \"macos\")".dependencies.rubrail]
-version = "0.6"
+version = "0.7"
 
 [target."cfg(target_os = \"macos\")".dependencies.objc]
 version = "0.2.2"
