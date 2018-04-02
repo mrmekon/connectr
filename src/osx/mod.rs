@@ -188,11 +188,11 @@ impl TStatusBar for OSXStatusBar {
             self.object.add_callback(app_menu_item, callback);
             let objc = self.object.take_objc();
             let _: () = msg_send![app_menu_item, setTarget: objc];
-            let _ = msg_send![app_menu_item, setSubmenu: submenu];
-            let _ = msg_send![txt, release];
-            let _ = msg_send![quit_key, release];
+            let _: () = msg_send![app_menu_item, setSubmenu: submenu];
+            let _: () = msg_send![txt, release];
+            let _: () = msg_send![quit_key, release];
             self.menu_bar.addItem_(app_menu_item);
-            let _ = msg_send![app_menu_item, release];
+            let _: () = msg_send![app_menu_item, release];
             submenu
         }
     }
