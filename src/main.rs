@@ -460,7 +460,7 @@ fn fill_menu<T: TStatusBar>(app: &mut ConnectrApp,
         let cb: NSCallback = Box::new(move |_sender, _tx| {
             let _ = open::that(format!("http://127.0.0.1:{}", connectr::settings::WEB_PORT));
         });
-        let _ = status.add_item("Re-launch Config", cb, false);
+        let _ = status.add_item(None, "Re-launch Config", cb, false);
         status.add_separator();
         status.add_quit("Exit");
         return;
@@ -681,7 +681,7 @@ fn fill_menu<T: TStatusBar>(app: &mut ConnectrApp,
         };
         let _ = tx.send(serde_json::to_string(&cmd).unwrap());
     });
-    let _ = status.add_item("Edit Alarms", cb, false);
+    let _ = status.add_item(None, "Edit Alarms", cb, false);
 
     let cb: NSCallback = Box::new(move |sender, tx| {
         let cmd = MenuCallbackCommand {
@@ -691,7 +691,7 @@ fn fill_menu<T: TStatusBar>(app: &mut ConnectrApp,
         };
         let _ = tx.send(serde_json::to_string(&cmd).unwrap());
     });
-    let _ = status.add_item("Reconfigure Connectr", cb, false);
+    let _ = status.add_item(None, "Reconfigure Connectr", cb, false);
 
     status.add_separator();
     let cb: NSCallback = Box::new(move |_sender, _tx| {
