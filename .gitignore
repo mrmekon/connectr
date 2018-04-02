@@ -2,3 +2,4 @@
 Cargo.lock
 connectr.ini
 target/
+.DS_Store
