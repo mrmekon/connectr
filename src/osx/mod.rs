@@ -193,6 +193,7 @@ impl TStatusBar for OSXStatusBar {
             let _: () = msg_send![quit_key, release];
             self.menu_bar.addItem_(app_menu_item);
             let _: () = msg_send![app_menu_item, release];
+            let _: () = msg_send![submenu, release];
             submenu
         }
     }
