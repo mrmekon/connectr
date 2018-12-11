@@ -105,6 +105,7 @@ pub fn http(url: &str, query: Option<&str>, body: Option<&str>,
     let mut json_bytes = Vec::<u8>::new();
     {
         let mut easy = Easy::new();
+        let _ = easy.timeout(Duration::new(20,0)); // 20 sec timeout
         easy.url(&url).unwrap();
         match method {
             HttpMethod::POST => {
