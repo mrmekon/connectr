@@ -427,6 +427,10 @@ pub struct SpotifyConnectr<'a> {
     refresh_timer_guard: Option<timer::Guard>,
     refresh_timer_channel: Option<Receiver<()>>,
 
+    settings_timer: timer::Timer,
+    settings_timer_guard: Option<timer::Guard>,
+    settings_timer_channel: Option<Receiver<()>>,
+
     alarms: Vec<AlarmTimer>,
     next_alarm_id: AtomicUsize,
 
@@ -445,6 +449,9 @@ impl<'a> Default for SpotifyConnectr<'a> {
             refresh_timer: timer::Timer::new(),
             refresh_timer_guard: Default::default(),
             refresh_timer_channel: Default::default(),
+            settings_timer: timer::Timer::new(),
+            settings_timer_guard: Default::default(),
+            settings_timer_channel: Default::default(),
             alarms: Vec::new(),
             next_alarm_id: AtomicUsize::new(0),
             scrobbler: None,
@@ -481,6 +488,9 @@ impl<'a> SpotifyConnectrBuilder<'a> {
             refresh_timer: timer::Timer::new(),
             refresh_timer_guard: None,
             refresh_timer_channel: None,
+            settings_timer: timer::Timer::new(),
+            settings_timer_guard: Default::default(),
+            settings_timer_channel: Default::default(),
             alarms: Vec::new(),
             next_alarm_id: AtomicUsize::new(0),
             scrobbler: None,
@@ -490,6 +500,7 @@ impl<'a> SpotifyConnectrBuilder<'a> {
             let _ = cnr.schedule_alarm(alarm.into());
         }
         cnr.scrobbler_authenticate();
+        let _ = cnr.schedule_settings_refresh();
         Some(cnr)
     }
     #[cfg(test)]
@@ -532,6 +543,14 @@ impl<'a> SpotifyConnectr<'a> {
     }
     pub fn reread_settings(&mut self) {
         if let Some(settings) = settings::read_settings(self.api.scopes_version) {
+            let ids: Vec<AlarmId> = self.alarms.iter().map(|x| {x.id}).collect();
+            for id in ids {
+                let _ = self.alarm_disable(id);
+            }
+            self.alarms.clear();
+            for alarm in &settings.alarms {
+                let _ = self.schedule_alarm(alarm.into());
+            }
             self.settings = settings;
         }
         self.scrobbler_authenticate();
@@ -672,6 +691,16 @@ impl<'a> SpotifyConnectr<'a> {
         self.alarm_reschedule(id)?;
         Ok(id as AlarmId)
     }
+    fn schedule_settings_refresh(&mut self) -> Result<(), ()> {
+        let (tx, rx) = channel::<()>();
+        let closure = move || {
+            tx.send(()).unwrap_or_else(|_| { warn!("Settings refresh lost."); });
+        };
+        self.settings_timer_channel = Some(rx);
+        let expire_offset = chrono::Duration::seconds(60*60); // refresh every hour
+        self.settings_timer_guard = Some(self.settings_timer.schedule_with_delay(expire_offset, closure));
+        Ok(())
+    }
     fn schedule_token_refresh(&mut self) -> Result<(), ()> {
         match self.expire_utc {
             Some(expire_utc) => {
@@ -754,6 +783,15 @@ impl<'a> SpotifyConnectr<'a> {
             Some(rx) => recv_fn(rx),
             _ => false,
         };
+        let need_settings = match self.settings_timer_channel.as_ref() {
+            Some(rx) => recv_fn(rx),
+            _ => false,
+        };
+        if need_settings {
+            info!("Re-reading settings file (timer).");
+            self.reread_settings();
+            let _ = self.schedule_settings_refresh();
+        }
         if !need_refresh {
             return ()
         }
