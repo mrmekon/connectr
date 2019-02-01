@@ -1,6 +1,6 @@
 [package]
 name = "connectr"
-version = "1.0.1-rc"
+version = "1.0.1"
 authors = [ "Trevor Bentley <mrmekon@gmail.com>" ]
 description = "A super lightweight Spotify controller."
 keywords = ["spotify", "connect", "webapi", "systray", "menubar"]
