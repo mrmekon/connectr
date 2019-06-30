@@ -115,7 +115,7 @@ impl INSObject for ObjcSubclass {
     fn class() -> &'static Class {
         OBJC_SUBCLASS_REGISTER_CLASS.call_once(|| {
             let superclass = NSObject::class();
-            let mut decl = ClassDecl::new("ObjcSubclass", superclass).unwrap();
+            let mut decl = ClassDecl::new("ConnectrObjcSubclass", superclass).expect("Failed to create custom ObjC class.");
             decl.add_ivar::<u64>("_rustdata");
 
             extern fn objc_cb(this: &mut Object, _cmd: Sel, sender: u64) {
@@ -136,6 +136,10 @@ impl INSObject for ObjcSubclass {
                 unsafe {*this.get_ivar("_rustdata")}
             }
 
+            extern fn objc_url(this: &Object, _cmd: Sel, event: u64, reply: u64) {
+                info!("connectr URL support not implemented yet.");
+            }
+
             unsafe {
                 let f: extern fn(&mut Object, Sel, u64) = objc_cb;
                 decl.add_method(sel!(cb:), f);
@@ -143,11 +147,13 @@ impl INSObject for ObjcSubclass {
                 decl.add_method(sel!(setRustData:), f);
                 let f: extern fn(&Object, Sel) -> u64 = objc_get_rust_data;
                 decl.add_method(sel!(rustData), f);
+                let f: extern fn(&Object, Sel, u64, u64) = objc_url;
+                decl.add_method(sel!(handleURLEvent:withReplyEvent:), f);
             }
 
             decl.register();
         });
 
-        Class::get("ObjcSubclass").unwrap()
+        Class::get("ConnectrObjcSubclass").unwrap()
     }
 }
