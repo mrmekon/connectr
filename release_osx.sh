@@ -9,7 +9,7 @@ echo "Building OS X app $RELEASE..."
 
 cargo run --release && pkill "$APP"
 
-strip "$DST/$APPDIR/Contents/MacOS/$APP"
+/usr/bin/strip "$DST/$APPDIR/Contents/MacOS/$APP"
 (cd "$DST" && zip -r9 "$RELEASE.zip" "$APPDIR" && md5 "$RELEASE.zip" > "$RELEASE.md5")
 
 echo "Done!"
