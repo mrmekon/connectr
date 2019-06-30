@@ -1118,6 +1118,13 @@ fn main() {
         .icon("connectr.icns")
         .version(env!("CARGO_PKG_VERSION"))
         .plist_key("LSBackgroundOnly", "1")
+        // Register "connectr://" URI scheme.
+        .plist_raw_string("
+  CFBundleURLTypes = ( {
+    CFBundleTypeRole = \"Viewer\";
+    CFBundleURLName = \"Connectr URL\";
+    CFBundleURLSchemes = (\"connectr\");
+  } );\n".into())
         .resource(icon.to_str().unwrap())
         .resource(touchbar_icon.to_str().unwrap())
         .resource(clientid_script.to_str().unwrap())
@@ -1159,6 +1166,7 @@ fn main() {
 
     let mut status = connectr::StatusBar::new(tx.clone());
     info!("Created status bar.");
+    status.register_url_handler();
     loading_menu(&mut status);
     let mut touchbar = TouchbarUI::init(tx);
     info!("Created touchbar.");

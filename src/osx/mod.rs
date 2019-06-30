@@ -216,6 +216,23 @@ impl TStatusBar for OSXStatusBar {
             let _: () = msg_send![target, setState: 0];
         }
     }
+    fn register_url_handler(&mut self) {
+        unsafe {
+            let cls = Class::get("NSAppleEventManager").unwrap();
+            let manager: *mut Object = msg_send![cls, sharedAppleEventManager];
+            let objc = self.object.take_objc();
+            let _ = msg_send![objc, handleURLEvent: 0 withReplyEvent: 0];
+            let _ = msg_send![manager, setEventHandler: objc
+                              andSelector: sel!(handleURLEvent:withReplyEvent:)
+                              forEventClass: 0x4755524c
+                              andEventID: 0x4755524c];
+            info!("Registered URL handler");
+            //let cb: NSCallback = Box::new(move |_sender, _tx| {
+            //    info!("URL callback");
+            //});
+            //self.object.add_callback(objc, cb);
+        }
+    }
     fn run(&mut self, block: bool) {
         let period = match block {
             true => fruitbasket::RunPeriod::Forever,

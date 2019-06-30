@@ -93,6 +93,7 @@ pub trait TStatusBar {
     fn sel_item(&mut self, sender: u64);
     fn unsel_item(&mut self, sender: u64);
     fn set_tooltip(&mut self, text: &str);
+    fn register_url_handler(&mut self);
     fn run(&mut self, block: bool);
 }
 
@@ -114,6 +115,7 @@ impl TStatusBar for DummyStatusBar {
     fn sel_item(&mut self, _: u64) {}
     fn unsel_item(&mut self, _: u64) {}
     fn set_tooltip(&mut self, _: &str) {}
+    fn register_url_handler(&mut self) {}
     fn run(&mut self, _: bool) {}
 }
 
