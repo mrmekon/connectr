@@ -9,6 +9,7 @@ homepage = "https://github.com/mrmekon/connectr"
 repository = "https://github.com/mrmekon/connectr"
 documentation = "https://mrmekon.github.io/connectr/connectr/"
 license = "Apache-2.0"
+readme = "README.md"
 
 [lib]
 name = "connectr"
