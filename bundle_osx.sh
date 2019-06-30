@@ -18,7 +18,7 @@ cp -a clientid_prompt.sh "$DST/$APPDIR/Contents/Resources/clientid_prompt.sh"
 chmod a+x "$DST/$APPDIR/Contents/Resources/clientid_prompt.sh"
 cp -a LICENSE "$DST/$APPDIR/Contents/Resources/LICENSE.txt"
 
-strip -u -r "$DST/$APPDIR/Contents/MacOS/connectr"
+/usr/bin/strip -u -r "$DST/$APPDIR/Contents/MacOS/connectr"
 
 cat > "$DST/$APPDIR/Contents/Info.plist" << EOF
 {
