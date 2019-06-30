@@ -12,6 +12,8 @@ extern crate lazy_static;
 #[macro_use]
 extern crate log;
 
+extern crate dirs;
+
 #[cfg(target_os = "macos")]
 pub mod osx;
 
@@ -98,7 +100,7 @@ pub trait TStatusBar {
 }
 
 use std::sync::mpsc::Sender;
-pub type NSCallback = Box<Fn(u64, &Sender<String>)>;
+pub type NSCallback = Box<dyn Fn(u64, &Sender<String>)>;
 
 pub struct DummyStatusBar {}
 impl TStatusBar for DummyStatusBar {
@@ -157,7 +159,7 @@ pub fn search_paths() -> Vec<String> {
     let mut v = BTreeSet::<String>::new();
 
     // $HOME
-    if let Some(dir) = std::env::home_dir() {
+    if let Some(dir) = dirs::home_dir() {
         v.insert(dir.display().to_string());
     }
 

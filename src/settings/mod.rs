@@ -9,7 +9,6 @@ use super::Scrobbler;
 extern crate time;
 extern crate fruitbasket;
 
-use std::env;
 use std::path;
 use std::str::FromStr;
 use std::collections::BTreeMap;
@@ -59,12 +58,12 @@ impl Settings {
 }
 
 fn default_inifile() -> String {
-    format!("{}/.{}", env::home_dir().unwrap().display(), INIFILE)
+    format!("{}/.{}", dirs::home_dir().unwrap().display(), INIFILE)
 }
 
 fn inifile() -> String {
     // Try to load INI file from home directory
-    let path = format!("{}/.{}", env::home_dir().unwrap().display(), INIFILE);
+    let path = format!("{}/.{}", dirs::home_dir().unwrap().display(), INIFILE);
     if path::Path::new(&path).exists() {
         info!("Found config: {}", path);
         return path;

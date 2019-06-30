@@ -750,7 +750,7 @@ impl<'a> SpotifyConnectr<'a> {
     }
     pub fn await_once(&mut self, blocking: bool) {
         // Choose between blocking or non-blocking receive.
-        let recv_fn: Box<Fn(&Receiver<()>) -> bool> = match blocking {
+        let recv_fn: Box<dyn Fn(&Receiver<()>) -> bool> = match blocking {
             true  => Box::new(move |rx| { match rx.recv() { Ok(_) => true, Err(_) => false } }),
             false => Box::new(move |rx| { match rx.try_recv() { Ok(_) => true, Err(_) => false } }),
         };
