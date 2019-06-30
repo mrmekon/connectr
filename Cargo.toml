@@ -13,7 +13,8 @@ readme = "README.md"
 
 [lib]
 name = "connectr"
-crate-type = ["rlib", "dylib"]
+# "dylib" disabled for Windows: https://github.com/rust-lang/rust/issues/53014
+crate-type = ["rlib"]
 
 [[bin]]
 name = "connectr"
