@@ -1227,7 +1227,7 @@ fn main() {
 
 fn require(response: SpotifyResponse) {
     match response.code.unwrap() {
-        200 ... 299 => { info!("Response: {}", response.code.unwrap()); },
+        200 ..= 299 => { info!("Response: {}", response.code.unwrap()); },
         _ => { warn!("Spotify action failed! ({})", response); }
     }
 }

@@ -25,7 +25,7 @@ use std::sync::mpsc::Sender;
 
 pub struct RustWrapperClass {
     pub objc: Id<ObjcSubclass, Shared>,
-    pub cb_fn: Option<Box<Fn(&mut RustWrapperClass, u64)>>,
+    pub cb_fn: Option<Box<dyn Fn(&mut RustWrapperClass, u64)>>,
     pub map: BTreeMap<u64, NSCallback>,
     pub tx: Sender<String>,
 }
@@ -136,7 +136,7 @@ impl INSObject for ObjcSubclass {
                 unsafe {*this.get_ivar("_rustdata")}
             }
 
-            extern fn objc_url(this: &Object, _cmd: Sel, event: u64, reply: u64) {
+            extern fn objc_url(_this: &Object, _cmd: Sel, _event: u64, _reply: u64) {
                 info!("connectr URL support not implemented yet.");
             }
 
