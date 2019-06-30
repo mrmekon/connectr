@@ -97,6 +97,8 @@ impl TStatusBar for WindowsStatusBar {
         let obj = self.items.get(&sender).unwrap();
         let _ = win.unselect_menu_item(*obj);
     }
+    fn register_url_handler(&mut self) {
+    }
     fn run(&mut self, block: bool) {
         let ref mut win = &mut self.app.window;
         win.wait_for_message(block);
