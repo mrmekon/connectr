@@ -62,15 +62,15 @@ fn default_inifile() -> String {
 }
 
 fn inifile() -> String {
-    // Try to load INI file from home directory
-    let path = format!("{}/.{}", dirs::home_dir().unwrap().display(), INIFILE);
+    // Default to looking in current working directory
+    let path = INIFILE.to_string();
     if path::Path::new(&path).exists() {
         info!("Found config: {}", path);
         return path;
     }
 
-    // Default to looking in current working directory
-    let path = INIFILE.to_string();
+    // Try to load INI file from home directory
+    let path = format!("{}/.{}", dirs::home_dir().unwrap().display(), INIFILE);
     if path::Path::new(&path).exists() {
         info!("Found config: {}", path);
         return path;
