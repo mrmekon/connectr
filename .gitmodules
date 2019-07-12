@@ -4,6 +4,3 @@
 [submodule "deps/rustfm-scrobble"]
 	path = deps/rustfm-scrobble
 	url = https://github.com/mrmekon/rustfm-scrobble.git
-[submodule "deps/rust-url"]
-	path = deps/rust-url
-	url = https://github.com/servo/rust-url.git
