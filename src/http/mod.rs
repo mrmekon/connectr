@@ -8,16 +8,12 @@ use std::sync::mpsc::channel;
 use std::time::Duration;
 use std::collections::BTreeMap;
 
-extern crate regex;
-use self::regex::Regex;
-
 extern crate curl;
 use self::curl::easy::{Easy, List};
 
 extern crate time;
 extern crate open;
-extern crate url;
-use self::url::percent_encoding;
+extern crate percent_encoding;
 
 use super::settings;
 
@@ -252,12 +248,11 @@ pub fn config_request_local_webserver(port: u32, form: String, reply: String) ->
             let stream = conn.unwrap().0;
             let mut reader = BufReader::new(stream);
             let mut response = Vec::<String>::new();
-            let mut post_bytes: u32 = 0;
-            let re = Regex::new(r"Content-Length: ([0-9 ]+)").unwrap();
+            let post_bytes: u32 = 0;
             for line in reader.by_ref().lines() {
                 if let Ok(line_str) = line {
-                    if re.is_match(line_str.as_str()) {
-                        post_bytes = re.captures(line_str.as_str()).unwrap()[1].parse::<u32>().unwrap();
+                    if line_str.starts_with("Content-Length: ") {
+                        line_str[16..].parse::<u32>().unwrap_or(0);
                     }
                     response.push(line_str.clone());
                     if line_str == "" {
@@ -319,14 +314,16 @@ pub fn config_request_local_webserver(port: u32, form: String, reply: String) ->
 
 fn spotify_auth_code(lines: Vec<String>) -> String {
     let mut auth_code = String::new();
+    // Looking for HTTP request header with format:
+    //   GET /?code=<MASSIVE STRING> HTTP/1.1
     for line in lines {
         let line_str = line;
-        let re = Regex::new(r"code=([^?& ]+)").unwrap();
-        let ismatch = re.is_match(line_str.as_str());
-        if ismatch {
-            let cap = re.captures(line_str.as_str()).unwrap();
-            auth_code = auth_code + &cap[1];
+        if !line_str.starts_with("GET ") {
+            continue;
         }
+        let code_idx = line_str.find("code=").unwrap_or(line_str.len() - 5) + 5;
+        let code_end_idx = line_str[code_idx..].find(|c| { c == '&' || c == '?' || c == ' '}).unwrap_or(line_str.len() - code_idx) + code_idx;
+        auth_code.push_str(&line_str[code_idx..code_end_idx]);
     }
     auth_code
 }
