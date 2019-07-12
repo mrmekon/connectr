@@ -1,6 +1,9 @@
 [submodule "deps/systray-rs"]
 	path = deps/systray-rs
 	url = https://github.com/mrmekon/systray-rs
-[submodule "deps/timer.rs"]
-	path = deps/timer.rs
-	url = https://github.com/mrmekon/timer.rs
+[submodule "deps/rustfm-scrobble"]
+	path = deps/rustfm-scrobble
+	url = https://github.com/mrmekon/rustfm-scrobble.git
+[submodule "deps/rust-url"]
+	path = deps/rust-url
+	url = https://github.com/servo/rust-url.git

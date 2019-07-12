@@ -28,7 +28,6 @@ use std::sync::RwLock;
 
 #[macro_use]
 extern crate log;
-extern crate log4rs;
 
 use std::ptr;
 use std::thread;
