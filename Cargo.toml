@@ -48,7 +48,7 @@ chrono = "0.4"
 log = "0.4"
 ctrlc = "3.1"
 dirs = "2.0"
-percent-encoding = {version="1.0.2", path="deps/rust-url/percent_encoding/"}
+percent-encoding = "1.0.1"
 rustfm-scrobble = {version="0.9.2", optional = true, path = "deps/rustfm-scrobble/"}
 
 [dependencies.fruitbasket]
