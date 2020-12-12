@@ -52,7 +52,7 @@ percent-encoding = "1.0.1"
 rustfm-scrobble = {version="0.9.2", optional = true, path = "deps/rustfm-scrobble/"}
 
 [dependencies.fruitbasket]
-version = "0.8"
+version = "0.9"
 features = ["logging"]
 
 [target."cfg(windows)".dependencies]
