@@ -8,7 +8,7 @@ extern crate objc_id;
 
 pub use ::NSCallback;
 
-use std::sync::{Once, ONCE_INIT};
+use std::sync::Once;
 
 use objc::Message;
 use objc::declare::ClassDecl;
@@ -109,7 +109,7 @@ impl ObjcSubclass {}
 
 unsafe impl Message for ObjcSubclass { }
 
-static OBJC_SUBCLASS_REGISTER_CLASS: Once = ONCE_INIT;
+static OBJC_SUBCLASS_REGISTER_CLASS: Once = Once::new();
 
 impl INSObject for ObjcSubclass {
     fn class() -> &'static Class {

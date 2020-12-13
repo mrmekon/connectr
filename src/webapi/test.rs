@@ -17,7 +17,7 @@ mod tests {
     use std::sync::atomic::AtomicBool;
     use std::sync::atomic::Ordering;
     use std::time::Duration;
-    use std::sync::{Once, ONCE_INIT};
+    use std::sync::Once;
 
     use self::hyper::{Post, StatusCode};
     use self::hyper::server::{Service, Request, Response};
@@ -25,7 +25,7 @@ mod tests {
     use self::futures::Stream;
     use self::futures::Future;
 
-    static START: Once = ONCE_INIT;
+    static START: Once = Once::new();
 
     lazy_static! {
         static ref WEBSERVER_STARTED: AtomicBool = AtomicBool::new(false);

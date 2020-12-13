@@ -1,5 +1,4 @@
 use std::fmt;
-use std::error::Error;
 use std::str;
 use std::io::{Read, Write, BufReader, BufRead};
 use std::net::{TcpListener};
@@ -142,9 +141,9 @@ pub fn http(url: &str, query: Option<&str>, body: Option<&str>,
             }).unwrap();
             match transfer.perform() {
                 Err(x) => {
-                    let result: Result<String,String> = Err(x.description().to_string());
+                    let result: Result<String,String> = Err(x.to_string());
                     #[cfg(feature = "verbose_http")]
-                    warn!("HTTP response: err: {}", x.description().to_string());
+                    warn!("HTTP response: err: {}", x.to_string());
                     return HttpResponse {code: response, data: result }
                 }
                 _ => {}
@@ -157,7 +156,7 @@ pub fn http(url: &str, query: Option<&str>, body: Option<&str>,
     }
     let result: Result<String,String> = match String::from_utf8(json_bytes) {
         Ok(x) => { Ok(x) }
-        Err(x) => { Err(x.utf8_error().description().to_string()) }
+        Err(x) => { Err(x.utf8_error().to_string()) }
     };
     #[cfg(feature = "verbose_http")]
     info!("HTTP response: {}", result.clone().unwrap());
