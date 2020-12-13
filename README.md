@@ -41,8 +41,8 @@ For developers: the API for communicating with the Spotify backend is provided a
 
 *Binary releases are provided as a convenience.  Building from source is preferred.*
 
-### Connectr v1.1.0
-#### [Mac OS X](https://github.com/mrmekon/connectr/releases/download/connectr-1.1.0/connectr-1.1.0.zip) (64-bit, md5: ce958529bcf3fef1ece3c73b1197678d)
+### Connectr v1.1.2
+#### [Mac OS X](https://github.com/mrmekon/connectr/releases/download/v1.1.2/connectr-1.1.2.zip) (64-bit, md5: b1466f9034c6ffed60150d2f206ff38b)
 
 ### OLD RELEASE: Connectr v0.2.0
 #### [Windows 10](https://github.com/mrmekon/connectr/releases/download/connectr-0.2.0/connectr-0.2.0-win32.zip) (64-bit, md5: 1745ecb67bd5ef0822eeabd96d98dcde)
